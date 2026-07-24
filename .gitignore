@@ -1,0 +1,42 @@
+# === 비밀값 — 절대 커밋 금지 ===
+# OpenAI API 키, Hugging Face 토큰이 평문으로 들어있음. 템플릿은 config/config.php.example 참고.
+config/config.php
+
+# === STEP 1: 원본/추출 데이터 (개인정보·저작권 소지가 있는 재결서 원문) ===
+step_1_process/3rdparty/
+step_1_process/data/
+step_1_process/data_output/
+step_1_process/paddle_env/
+step_1_process/build/
+step_1_process/tests/regression_output/
+
+# === STEP 2: 가상환경·모델 캐시·임베딩 바이너리(재생성 가능) ===
+step_2_process/3rdparty/
+step_2_process/sbert_env/
+step_2_process/models/
+step_2_process/embeddings/*.bin
+# STEP1 산출물을 그대로 이어받은 문장 원문 — data_output과 같은 이유로 제외
+step_2_process/from_step1/
+
+# === STEP 3: STEP2에서 인계받은 임베딩 바이너리·빌드 산출물 ===
+step_3_process/from_step2/*.bin
+step_3_process/cpp/kmeans
+step_2_process/cpp/benchmark
+step_1_process/build/body_decoder
+
+# === gui_web: 생성되는 정적 스냅샷(재생성: python3 generate_report.py) ===
+gui_web/report.html
+
+# === 배포용 스테이징 복사본 ===
+dothome_hosting_html/
+
+# === 공통 ===
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+*.o
+*.obj
+
+# 초안 문서(비공개로 유지)
+*.docx

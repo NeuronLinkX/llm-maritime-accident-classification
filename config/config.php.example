@@ -1,0 +1,19 @@
+<?php
+declare(strict_types=1);
+
+// 이 파일을 config.php로 복사한 뒤 실제 키를 채워 넣으세요.
+//   cp config/config.php.example config/config.php
+// config.php는 .gitignore에 등록되어 있어 커밋되지 않습니다.
+
+// 문장 간 코사인 유사도 계산(OpenAI Embeddings API)에 사용됩니다.
+// https://platform.openai.com/api-keys 에서 발급받은 키를 입력하세요.
+// 비워두면 유사도 계산 기능이 비활성화되고 안내 메시지가 표시됩니다.
+define('OPENAI_API_KEY', '');
+define('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small');
+
+// 군집 레이블링(Chat Completions)에 사용되는 모델입니다.
+define('OPENAI_CHAT_MODEL', 'gpt-4o-mini');
+
+// gated Hugging Face 모델(Llama 등) 접근에 사용됩니다.
+// https://huggingface.co/settings/tokens 에서 발급받으세요.
+define('HF_TOKEN', '');

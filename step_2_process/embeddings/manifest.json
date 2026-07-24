@@ -1,0 +1,41 @@
+{
+  "count": 818,
+  "dim": 768,
+  "models": [
+    {
+      "hf_name": "jhgan/ko-sroberta-nli",
+      "short_name": "ko-sroberta-nli",
+      "file": "ko-sroberta-nli.bin",
+      "dim": 768,
+      "elapsed_sec": 9.5
+    },
+    {
+      "hf_name": "jhgan/ko-sroberta-sts",
+      "short_name": "ko-sroberta-sts",
+      "file": "ko-sroberta-sts.bin",
+      "dim": 768,
+      "elapsed_sec": 8.7
+    },
+    {
+      "hf_name": "jhgan/ko-sroberta-multitask",
+      "short_name": "ko-sroberta-multitask",
+      "file": "ko-sroberta-multitask.bin",
+      "dim": 768,
+      "elapsed_sec": 9.0
+    },
+    {
+      "hf_name": "snunlp/KR-SBERT-V40K-klueNLI-augSTS",
+      "short_name": "kr-sbert-v40k-kluenli-augsts",
+      "file": "kr-sbert-v40k-kluenli-augsts.bin",
+      "dim": 768,
+      "elapsed_sec": 8.1
+    },
+    {
+      "hf_name": "snunlp/KR-SBERT-Medium-klueNLI-klueSTS",
+      "short_name": "kr-sbert-medium-kluenli-kluests",
+      "file": "kr-sbert-medium-kluenli-kluests.bin",
+      "dim": 768,
+      "elapsed_sec": 9.6
+    }
+  ]
+}

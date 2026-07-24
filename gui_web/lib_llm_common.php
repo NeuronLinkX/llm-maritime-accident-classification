@@ -1,0 +1,169 @@
+<?php
+/**
+ * STEP 4 공용 — 군집 데이터 수집 + 프롬프트 구성.
+ *
+ * OpenAI 경로(api_llm_label.php)와 로컬 LLM 경로(api_local_llm_label.php)가
+ * "STEP3 산출물을 읽어 군집 블록을 만들고, 같은 프롬프트로 라벨을 요청한다"는
+ * 로직을 완전히 공유한다 — 모델 백엔드만 다르므로, 그 차이만 각 엔드포인트에
+ * 남기고 나머지는 여기 한 곳에 둔다.
+ */
+
+declare(strict_types=1);
+
+namespace LlmCommon;
+
+const STEP3_OUT = __DIR__ . "/../step_3_process/output";
+const STEP1_JSONL = __DIR__ . "/../step_2_process/from_step1/step1_dataset.jsonl";
+const SAMPLES_PER_CLUSTER = 3;
+const SAMPLE_TEXT_MAXLEN = 300; // 문자 단위 자르기(토큰 비용/생성 시간 절약)
+const KEYWORDS_PER_CLUSTER = 8;
+const CANDIDATE_LABELS = "경계소홀, 정비불량/기기결함, 화재/폭발, 인적과실(조선부주의), 기상/환경요인, "
+    . "하역/작업안전(인명사상), 항법위반, 조종미숙, 계류/정박사고, 해양오염, 기타";
+
+function read_csv(string $path): array {
+    if (!is_file($path)) return [];
+    $rows = [];
+    $f = fopen($path, "r");
+    $header = fgetcsv($f);
+    while (($line = fgetcsv($f)) !== false) {
+        if (count($line) !== count($header)) continue;
+        $rows[] = array_combine($header, $line);
+    }
+    fclose($f);
+    return $rows;
+}
+
+function load_cluster_ids(): array {
+    $rows = read_csv(STEP3_OUT . "/clusters.csv");
+    $byCluster = [];
+    foreach ($rows as $r) {
+        $byCluster[(int)$r["cluster"]][] = $r["id"];
+    }
+    ksort($byCluster);
+    return $byCluster;
+}
+
+function load_keywords(): array {
+    $rows = read_csv(STEP3_OUT . "/cluster_keywords.csv");
+    $byCluster = [];
+    foreach ($rows as $r) {
+        if ($r["kind"] !== "distinctive") continue;
+        $c = (int)$r["cluster"];
+        if (!isset($byCluster[$c])) $byCluster[$c] = [];
+        if (count($byCluster[$c]) >= KEYWORDS_PER_CLUSTER) continue;
+        $byCluster[$c][] = $r["keyword"];
+    }
+    return $byCluster;
+}
+
+// step1_dataset.jsonl은 818줄이라 필요한 id만 골라도 전체를 훑어야 한다 —
+// 매 요청마다 818줄 스캔은 가벼우니(수 ms) 별도 인덱스를 만들지 않는다.
+function load_texts_by_id(array $wantedIds): array {
+    $texts = [];
+    if (!is_file(STEP1_JSONL)) return $texts;
+    $wanted = array_flip($wantedIds);
+    $fh = fopen(STEP1_JSONL, "r");
+    while (($line = fgets($fh)) !== false) {
+        $line = trim($line);
+        if ($line === "") continue;
+        $d = json_decode($line, true);
+        if (!$d || !isset($d["id"]) || !isset($wanted[$d["id"]])) continue;
+        $texts[$d["id"]] = $d["embedding_text"] ?? "";
+    }
+    fclose($fh);
+    return $texts;
+}
+
+// 이 환경엔 mbstring 확장이 없어서(php -m에 없음) UTF-8 바이트 경계를
+// 손으로 계산해 문자 단위로 자른다 — 바이트 단위 substr()을 쓰면 한글
+// 문자 중간이 잘려 깨진 바이트가 남는다.
+function utf8_head(string $s, int $maxChars): string {
+    $len = strlen($s);
+    $charCount = 0;
+    $i = 0;
+    while ($i < $len && $charCount < $maxChars) {
+        $byte = ord($s[$i]);
+        if ($byte < 0x80) $i += 1;
+        elseif (($byte & 0xE0) === 0xC0) $i += 2;
+        elseif (($byte & 0xF0) === 0xE0) $i += 3;
+        elseif (($byte & 0xF8) === 0xF0) $i += 4;
+        else $i += 1;
+        $charCount++;
+    }
+    $truncated = substr($s, 0, $i);
+    return ($i < $len) ? $truncated . "…" : $truncated;
+}
+
+/** STEP3 산출물에서 군집별 {cluster, n_docs, keywords, sample_sentences} 블록을 만든다. 실패 시 null. */
+function build_cluster_blocks(): ?array {
+    $byCluster = load_cluster_ids();
+    if (!$byCluster) return null;
+    $keywordsByCluster = load_keywords();
+
+    $sampleIds = [];
+    foreach ($byCluster as $ids) {
+        foreach (array_slice($ids, 0, SAMPLES_PER_CLUSTER) as $id) $sampleIds[] = $id;
+    }
+    $textsById = load_texts_by_id($sampleIds);
+
+    $clusterBlocks = [];
+    foreach ($byCluster as $c => $ids) {
+        $samples = [];
+        foreach (array_slice($ids, 0, SAMPLES_PER_CLUSTER) as $id) {
+            if (!empty($textsById[$id])) $samples[] = utf8_head($textsById[$id], SAMPLE_TEXT_MAXLEN);
+        }
+        $clusterBlocks[] = [
+            "cluster" => $c,
+            "n_docs" => count($ids),
+            "keywords" => $keywordsByCluster[$c] ?? [],
+            "sample_sentences" => $samples,
+        ];
+    }
+    return $clusterBlocks;
+}
+
+/** [systemPrompt, userPrompt] 반환. */
+function build_prompt(array $clusterBlocks): array {
+    $nClusters = count($clusterBlocks);
+    $userPrompt = "다음은 한국 해양안전심판원 재결서를 SBERT 임베딩 + K-Means로 군집화한 결과입니다. "
+        . "군집은 총 {$nClusters}개(cluster 번호: " . implode(", ", array_column($clusterBlocks, "cluster")) . ")이며, "
+        . "**반드시 {$nClusters}개 군집 전부에 대해 빠짐없이 하나씩** 라벨을 제안해야 합니다. 일부만 답하지 마세요.\n\n"
+        . "각 군집의 특징 키워드(그 군집에서 유독 자주 나오는 단어)와 대표 문장 일부를 참고하여, "
+        . "아래 사고원인 대분류 후보 중 가장 적절한 것을 고르거나(꼭 후보 안에서만 고를 필요는 없음, 더 적절한 라벨이 있으면 새로 제안) "
+        . "그 근거를 한국어 2문장 이내로 설명해 주세요.\n\n"
+        . "사고원인 대분류 후보: " . CANDIDATE_LABELS . "\n\n"
+        . "다음 JSON 형식으로만 답하세요 (다른 텍스트 금지, clusters 배열 길이는 반드시 {$nClusters}):\n"
+        . '{"clusters": [{"cluster": 0, "proposed_label": "...", "rationale": "...", "confidence": 0.0}]}' . "\n\n"
+        . "군집 데이터:\n" . json_encode($clusterBlocks, JSON_UNESCAPED_UNICODE);
+
+    return ["당신은 해양사고 원인 분류 전문가입니다. 반드시 유효한 JSON 객체만 출력하세요.", $userPrompt];
+}
+
+/**
+ * 모델 응답(choices[0].message.content)에서 {"clusters":[...]}를 파싱. 실패 시 null.
+ *
+ * 로컬 모델(특히 소형)은 "JSON만 출력하라"는 지시를 항상 지키지는 않아서
+ * 앞뒤에 설명 텍스트나 ```json 코드블록을 덧붙이는 경우가 있다 — 바로
+ * json_decode가 실패하면, 첫 '{'부터 마지막 '}'까지만 잘라내 한 번 더 시도한다.
+ */
+function parse_clusters_response(string $content): ?array {
+    $parsed = json_decode($content, true);
+    if (is_array($parsed) && isset($parsed["clusters"])) return $parsed["clusters"];
+
+    $start = strpos($content, "{");
+    $end = strrpos($content, "}");
+    if ($start === false || $end === false || $end <= $start) return null;
+    $slice = substr($content, $start, $end - $start + 1);
+    $parsed = json_decode($slice, true);
+    if (!is_array($parsed) || !isset($parsed["clusters"])) return null;
+    return $parsed["clusters"];
+}
+
+/** chat-completions 엔드포인트 URL에서 "scheme://host[:port]"만 뽑아낸다(경로 제외). 실패 시 null. */
+function derive_local_base_url(string $chatEndpoint): ?string {
+    $parts = parse_url($chatEndpoint);
+    if (!$parts || !isset($parts["scheme"], $parts["host"])) return null;
+    $url = $parts["scheme"] . "://" . $parts["host"];
+    if (isset($parts["port"])) $url .= ":" . $parts["port"];
+    return $url;
+}
