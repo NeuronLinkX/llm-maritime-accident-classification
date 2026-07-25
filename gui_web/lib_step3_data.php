@@ -40,6 +40,43 @@ function load_scatter(): array {
     ], $rows);
 }
 
+/**
+ * similarity_sample.py가 만든, 군집별 대표 문서 간 실제 코사인 유사도 행렬을 읽는다.
+ * CSV 형태: id,category,filename,cluster,<문서id1>,<문서id2>,...  (뒤쪽 컬럼이 곧 행렬)
+ */
+function load_similarity_sample(): ?array {
+    $path = OUT_DIR . "/similarity_sample.csv";
+    if (!is_file($path)) return null;
+    $f = fopen($path, "r");
+    $header = fgetcsv($f);
+    if (!$header) { fclose($f); return null; }
+    $metaCols = ["id", "category", "filename", "cluster"];
+    $docIds = array_slice($header, count($metaCols));
+
+    $items = [];
+    $matrix = [];
+    while (($line = fgetcsv($f)) !== false) {
+        if (count($line) !== count($header)) continue;
+        $row = array_combine($header, $line);
+        $items[] = ["id" => $row["id"], "category" => $row["category"], "cluster" => (int)$row["cluster"]];
+        $matrix[] = array_map(fn($id) => (float)$row[$id], $docIds);
+    }
+    fclose($f);
+    if (!$items) return null;
+
+    return ["items" => $items, "matrix" => $matrix];
+}
+
+/** similarity_histogram.py가 만든 전체 문서쌍(818건 전수) 유사도 분포(intra/inter 군집)를 읽는다. */
+function load_similarity_histogram(): ?array {
+    $rows = read_csv(OUT_DIR . "/similarity_histogram.csv");
+    if (!$rows) return null;
+    return array_map(fn($r) => [
+        "bin_start" => (float)$r["bin_start"], "bin_end" => (float)$r["bin_end"],
+        "intra_count" => (int)$r["intra_count"], "inter_count" => (int)$r["inter_count"],
+    ], $rows);
+}
+
 function build_insights(array $clustersOut, array $summary): array {
     $totalDocs = array_sum(array_map(fn($c) => $c["n_docs"], $clustersOut)) ?: 1;
     $scored = array_map(function ($c) use ($totalDocs) {
@@ -129,6 +166,8 @@ function build_data(): array {
         "clusters" => $clustersOut,
         "scatter" => ["points" => $scatterPoints, "n_clusters" => count($byClusterDocs)],
         "insights" => build_insights($clustersOut, $summary),
+        "similarity_sample" => load_similarity_sample(),
+        "similarity_histogram" => load_similarity_histogram(),
         "generated_at" => date("Y-m-d H:i:s"),
         "source_mode" => "live-php",
     ];

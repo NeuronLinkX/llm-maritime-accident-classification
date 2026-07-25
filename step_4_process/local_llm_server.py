@@ -64,29 +64,29 @@ def load_hf_token_from_config():
 
 load_hf_token_from_config()
 
-# 비교 카탈로그 — 크기 축(Qwen 2.5의 3B/7B/14B)과 계열 축(Mistral/Phi/EXAONE/Llama)을
-# 함께 넣어서 "모델이 커지면 나아지는지"와 "다른 계열은 어떻게 다른지"를 둘 다 볼 수
-# 있게 구성했다. 계열 축은 서로 다른 크기를 비교하면 크기 차이 때문에 성능 차이가
-# 나는 건지 계열 차이 때문인지 구분이 안 되므로, 원래는 전부 7B 안팎으로 맞추려
-# 했다(EXAONE 2.4B→7.8B, Llama 3B→8B). Phi만 예외 — "microsoft/Phi-3-small-8k-instruct"
-# (7B)를 시도했으나 이 환경의 transformers(5.14.1)에서 그 저장소의 커스텀 모델링
-# 코드가 요구하는 패키지를 다 설치해도(requests/tiktoken/einops/pytest) 마지막엔
-# rope_scaling 설정 파싱 자체가 깨져("Field short_factor is required") 로드가
-# 안 됐다 — 커스텀 코드와 이 transformers 버전 간의 호환성 문제로 보인다.
-# 그래서 Phi는 크기를 맞추는 대신 트랜스포머스 네이티브 지원(커스텀 코드 불필요)이라
-# 안정적으로 도는 "microsoft/Phi-3.5-mini-instruct"(3.8B)로 되돌렸다.
-# Llama-3.1-8B-Instruct, EXAONE-3.5-7.8B-Instruct는 모델 저장소에 포함된 커스텀
-# 코드를 실행해야 로드된다(trust_remote_code=True) — 둘 다 원 제작사(Meta/LG AI
-# Research) 공식 저장소라 실행을 허용했다.
-# Llama-3.1-8B-Instruct는 gated라 HF_TOKEN + 해당 저장소 라이선스 동의가 없으면
-# 이 모델만 로드 실패(status="error")로 표시되고 나머지는 정상 동작한다.
+# 비교 카탈로그 — 크기 축(Qwen 2.5의 3B/7B/14B)과 계열 축(Qwen vs Llama)을 본다.
+#
+# 원래는 Mistral/Phi/EXAONE도 계열 축에 넣어 크기(~7-8B)를 맞추려 했으나, 이
+# 환경(transformers 5.14.1)에서 셋 다 안정적으로 돌지 않아 카탈로그에서 뺐다:
+#   - microsoft/Phi-3-small-8k-instruct: 커스텀 모델링 코드가 요구하는 패키지를
+#     다 설치해도(requests/tiktoken/einops/pytest) rope_scaling 파싱에서
+#     "Field short_factor is required"로 로드 자체가 실패.
+#   - microsoft/Phi-3.5-mini-instruct(대체 시도): 로드는 되지만 생성 시
+#     "AttributeError: 'DynamicCache' object has no attribute 'seen_tokens'"로
+#     크래시 — trust_remote_code=True가 네이티브 Phi3 구현 대신 저장소의
+#     구버전 커스텀 코드를 타면서 이 transformers 버전과 안 맞음.
+#   - LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct: 로드는 되지만 생성 시
+#     "TypeError: create_causal_mask() got an unexpected keyword argument
+#     'input_embeds'"로 크래시 — 저장소 커스텀 코드가 이 transformers 버전의
+#     내부 함수 시그니처보다 오래됨.
+#   - mistralai/Mistral-7B-Instruct-v0.3: 이 환경에서 반복적으로 호출 실패.
+# 셋 다 "trust_remote_code로 저장소 커스텀 코드를 실행 → 이 transformers
+# 버전과 안 맞음"이라는 같은 패턴이라, transformers를 올리거나 저장소가
+# 코드를 업데이트하기 전까지는 재추가하지 않는다.
 MODEL_CATALOG = [
     "Qwen/Qwen2.5-3B-Instruct",
     "Qwen/Qwen2.5-7B-Instruct",
     "Qwen/Qwen2.5-14B-Instruct",
-    "mistralai/Mistral-7B-Instruct-v0.3",
-    "microsoft/Phi-3.5-mini-instruct",
-    "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct",
     "meta-llama/Llama-3.1-8B-Instruct",
 ]
 

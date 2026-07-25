@@ -72,6 +72,44 @@ def load_scatter():
     return points
 
 
+def load_similarity_sample():
+    """similarity_sample.py가 만든, 군집별 대표 문서 간 실제 코사인 유사도 행렬을 읽는다."""
+    path = OUT_DIR / "similarity_sample.csv"
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if not header:
+            return None
+        meta_cols = ["id", "category", "filename", "cluster"]
+        doc_ids = header[len(meta_cols):]
+        items = []
+        matrix = []
+        for line in reader:
+            row = dict(zip(header, line))
+            items.append({"id": row["id"], "category": row["category"], "cluster": int(row["cluster"])})
+            matrix.append([float(row[did]) for did in doc_ids])
+    if not items:
+        return None
+    return {"items": items, "matrix": matrix}
+
+
+def load_similarity_histogram():
+    """similarity_histogram.py가 만든 전체 문서쌍(818건 전수) 유사도 분포(intra/inter 군집)를 읽는다."""
+    path = OUT_DIR / "similarity_histogram.csv"
+    if not path.is_file():
+        return None
+    rows = []
+    with open(path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            rows.append({
+                "bin_start": float(row["bin_start"]), "bin_end": float(row["bin_end"]),
+                "intra_count": int(row["intra_count"]), "inter_count": int(row["inter_count"]),
+            })
+    return rows or None
+
+
 def build_data():
     k_sel = load_k_selection()
     clusters = load_clusters()
@@ -119,6 +157,8 @@ def build_data():
         "clusters": clusters_out,
         "scatter": {"points": scatter_points, "n_clusters": len(cluster_ids)},
         "insights": insights,
+        "similarity_sample": load_similarity_sample(),
+        "similarity_histogram": load_similarity_histogram(),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "source_mode": "static-build",
     }

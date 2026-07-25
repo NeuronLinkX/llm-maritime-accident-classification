@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# 통합 리포트(PHP, :8000)와 DGX Spark 로컬 LLM 서버(FastAPI, :8500)를
+# 통합 리포트(PHP, :9000)와 DGX Spark 로컬 LLM 서버(FastAPI, :8500)를
 # 한 번에 띄운다. Ctrl+C 한 번으로 둘 다 같이 내려간다.
+#
+# 이 스크립트는 터미널을 띄워둔 동안만 돈다 — 로그아웃 후에도 계속 켜두려면
+# systemd 사용자 서비스(step1-report.service / step1-localllm.service)로
+# 등록하는 걸 권장한다. GUIDE.md 18.2절 참고.
 #
 # 사용:
 #   ./start_servers.sh
 #
 # 개별 포트를 바꾸고 싶으면 환경변수로:
-#   REPORT_PORT=8000 LOCAL_LLM_PORT=8500 ./start_servers.sh
+#   REPORT_PORT=9000 LOCAL_LLM_PORT=8500 ./start_servers.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPORT_PORT="${REPORT_PORT:-8000}"
+REPORT_PORT="${REPORT_PORT:-9000}"
 LOCAL_LLM_PORT="${LOCAL_LLM_PORT:-8500}"
 SBERT_ENV="$SCRIPT_DIR/step_2_process/sbert_env"
 

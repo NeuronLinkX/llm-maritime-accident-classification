@@ -142,21 +142,41 @@ function build_prompt(array $clusterBlocks): array {
 /**
  * 모델 응답(choices[0].message.content)에서 {"clusters":[...]}를 파싱. 실패 시 null.
  *
- * 로컬 모델(특히 소형)은 "JSON만 출력하라"는 지시를 항상 지키지는 않아서
- * 앞뒤에 설명 텍스트나 ```json 코드블록을 덧붙이는 경우가 있다 — 바로
- * json_decode가 실패하면, 첫 '{'부터 마지막 '}'까지만 잘라내 한 번 더 시도한다.
+ * 로컬 모델(특히 소형)은 "JSON만 출력하라"는 지시를 항상 지키지는 않는다 — 실제로
+ * 관찰된 패턴들:
+ *   - ```json ... ``` 코드펜스로 감싸기
+ *   - 앞에 여는 중괄호를 한 번 더 씀: "{\n{\"clusters\": [...]}"
+ *   - 첫 항목 키에 따옴표를 중복해서 씀: "{\"\"cluster\": 0, ...}"
+ *   - 앞뒤에 설명 텍스트를 덧붙이기
+ * 정확히 파싱되는 시도부터 점점 관대해지는 순서로 여러 번 시도한다.
  */
 function parse_clusters_response(string $content): ?array {
-    $parsed = json_decode($content, true);
-    if (is_array($parsed) && isset($parsed["clusters"])) return $parsed["clusters"];
+    $tryDecode = function (string $s): ?array {
+        $parsed = json_decode($s, true);
+        return (is_array($parsed) && isset($parsed["clusters"]) && is_array($parsed["clusters"]))
+            ? $parsed["clusters"] : null;
+    };
 
-    $start = strpos($content, "{");
-    $end = strrpos($content, "}");
-    if ($start === false || $end === false || $end <= $start) return null;
-    $slice = substr($content, $start, $end - $start + 1);
-    $parsed = json_decode($slice, true);
-    if (!is_array($parsed) || !isset($parsed["clusters"])) return null;
-    return $parsed["clusters"];
+    if (($r = $tryDecode($content)) !== null) return $r;
+
+    // 1) 마크다운 코드펜스 제거
+    $stripped = trim(preg_replace('/^```(?:json)?\s*|\s*```\s*$/m', "", trim($content)));
+    if (($r = $tryDecode($stripped)) !== null) return $r;
+
+    // 2) 흔한 소형 모델 오타 보정: 중복 여는 중괄호, 중복 따옴표
+    $repaired = preg_replace('/^\s*\{\s*(?=\{)/', "", $stripped, 1);
+    $repaired = preg_replace('/\{""(?=\w)/u', '{"', $repaired);
+    if (($r = $tryDecode($repaired)) !== null) return $r;
+
+    // 3) 그래도 안 되면 첫 '{'~마지막 '}' 구간만 잘라내 마지막으로 시도
+    //    (부연 설명이 JSON 앞뒤에 섞여 나온 경우 대비)
+    $start = strpos($repaired, "{");
+    $end = strrpos($repaired, "}");
+    if ($start !== false && $end !== false && $end > $start) {
+        if (($r = $tryDecode(substr($repaired, $start, $end - $start + 1))) !== null) return $r;
+    }
+
+    return null;
 }
 
 /** chat-completions 엔드포인트 URL에서 "scheme://host[:port]"만 뽑아낸다(경로 제외). 실패 시 null. */

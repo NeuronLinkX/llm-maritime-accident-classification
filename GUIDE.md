@@ -620,7 +620,7 @@ KEEP_PDF_DEBUG=1 PADDLE_OCR_MAX_PAGES=5 bash ./step_1_run_decoder_data.sh
 
 - 처리된 각 파일의 결과: `data_output/<원본 파일명>.json` (확장자 포함, 예: `foo.pdf.json`)
 - 처리 중 실제 오류가 있었던 파일만: `data_output/<원본 파일명>.stderr.log` (정상 처리된 파일은 이 로그 파일 자체가 생기지 않음)
-- 전체 결과를 한눈에 보려면(1.4절 폴더 구조 참고, `gui_web/`에서 실행): `cd ../gui_web && python3 generate_report.py`로 `report.html`을 만들거나, `php -S localhost:8000` 후 `report.php`를 열어 실시간으로 봅니다. "검토필요" 배지의 물음표(`?`) 아이콘에 마우스를 올리면 왜 검토필요인지 사유가 뜨고, 표 아래에는 카테고리별 처리 현황 막대 차트가 있습니다.
+- 전체 결과를 한눈에 보려면(1.4절 폴더 구조 참고, `gui_web/`에서 실행): `cd ../gui_web && python3 generate_report.py`로 `report.html`을 만들거나, `php -S localhost:9000` 후 `report.php`를 열어 실시간으로 봅니다. "검토필요" 배지의 물음표(`?`) 아이콘에 마우스를 올리면 왜 검토필요인지 사유가 뜨고, 표 아래에는 카테고리별 처리 현황 막대 차트가 있습니다.
 - `jq`가 설치돼 있으면 터미널에 각 파일의 핵심 결과(추출된 4가지 항목 등)가 보기 좋게 요약되어 출력됨
 
 ### 12.5 STEP 2 인계용 데이터셋 내보내기
@@ -872,19 +872,27 @@ python3 wordcloud_gen.py
 
 # 5) STEP 2의 2D 좌표에 군집 번호를 붙임 — gui_web 군집 산점도용
 python3 join_tsne.py
+
+# 6) 군집별 대표 문서 간 실제 코사인 유사도 표본 — gui_web STEP3 마지막 히트맵용
+python3 similarity_sample.py
+
+# 7) 818건 전체 쌍(약 33만 쌍)의 실제 유사도 분포(같은 군집 vs 다른 군집) — 히스토그램용
+python3 similarity_histogram.py
 ```
 
 ### 16.4 출력 결과 설명
 
 모두 `step_3_process/output/`에 쌓입니다.
 
-| 파일                          | 내용                                                         |
-| ----------------------------- | ------------------------------------------------------------ |
-| `k_selection.csv`           | 탐색한 K별 WCSS·평균 Silhouette, Elbow/Silhouette/채택 여부 |
-| `clusters.csv`              | 문서별 배정된 군집 번호                                      |
-| `cluster_keywords.csv`      | 군집별 빈도 키워드 + 특징(distinctive) 키워드                |
-| `wordcloud_cluster_<N>.png` | 군집별 워드클라우드 이미지                                   |
-| `tsne_clusters.csv`         | STEP2 좌표 + 군집 번호(조인 결과)                            |
+| 파일                          | 내용                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| `k_selection.csv`           | 탐색한 K별 WCSS·평균 Silhouette, Elbow/Silhouette/채택 여부                     |
+| `clusters.csv`              | 문서별 배정된 군집 번호                                                          |
+| `similarity_sample.csv`     | 군집별 대표 문서(중심 벡터에 가장 가까운 2건씩) 간 실제 SBERT 코사인 유사도 행렬 |
+| `similarity_histogram.csv`  | 818건 전체 쌍의 유사도를 50개 구간으로 나눈 히스토그램(같은 군집/다른 군집 구분) |
+| `cluster_keywords.csv`      | 군집별 빈도 키워드 + 특징(distinctive) 키워드                                    |
+| `wordcloud_cluster_<N>.png` | 군집별 워드클라우드 이미지                                                       |
+| `tsne_clusters.csv`         | STEP2 좌표 + 군집 번호(조인 결과)                                                |
 
 ### 16.5 K-means 탐색 결과
 
@@ -907,7 +915,7 @@ python3 join_tsne.py
 * **모호한 군집**
 
   * 반대로 아래 군집은 크기는 크지만(전체의 32.2%) 특징 키워드가 약해 "출항/조업/해상"처럼 여러 사고 유형에 공통되는 상투어 위주로 묶여 있습니다. 이 군집 내부에 서로 다른 사고 원인이 섞여 있을 가능성이 높습니다.
-    * 군집 3(263건, 전체의 32.2%) — 특징 키워드 신호가 가장 약한 큰 덩어리입니다모호함
+    * 군집 3(263건, 전체의 32.2%) :  특징 키워드 신호가 가장 약한 큰 덩어리입니다모호함
 * **STEP 4로 넘길 때 고려할 점**
 
   * 전체 평균 Silhouette이 0.0473로 낮은 편인 것도 같은 신호입니다. 재결서 문장이 사고 유형과 무관하게 정형화된 표현을 광범위하게 공유하기 때문에, K-Means 같은 거리 기반 군집화만으로는 완전히 갈라지지 않습니다.
@@ -956,23 +964,20 @@ pip install fastapi "uvicorn[standard]" accelerate
 python3 local_llm_server.py     # 기본 포트 8500
 ```
 
-기본 비교 카탈로그(`local_llm_server.py`의 `MODEL_CATALOG`) — 크기 축(Qwen 3B/7B/14B)과 계열 축을 함께 봅니다. 계열 축은 크기 차이가 결과에 섞이지 않도록 가능한 한 7B 안팎으로 맞췄습니다.
+기본 비교 카탈로그(`local_llm_server.py`의 `MODEL_CATALOG`) — 크기 축(Qwen 3B/7B/14B)과 계열 축(Qwen vs Llama)을 봅니다.
 
-| 모델                                     | 계열/크기    | 비고                                                       |
-| ---------------------------------------- | ------------ | ---------------------------------------------------------- |
-| `Qwen/Qwen2.5-3B-Instruct`             | Qwen, 소형   | 다운로드 빠름, 기본값                                      |
-| `Qwen/Qwen2.5-7B-Instruct`             | Qwen, 중형   | 크기 축 비교 (Qwen 계열)                                   |
-| `Qwen/Qwen2.5-14B-Instruct`            | Qwen, 대형   | 크기 축 비교 (Qwen 계열)                                   |
-| `mistralai/Mistral-7B-Instruct-v0.3`   | Mistral, 7B  | 계열 축 비교                                               |
-| `microsoft/Phi-3.5-mini-instruct`      | Phi, 3.8B    | 계열 축 비교 — 아래 참고                                  |
-| `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct` | EXAONE, 7.8B | 계열 축 비교, 한국어 특화,**trust_remote_code 필요** |
-| `meta-llama/Llama-3.1-8B-Instruct`     | Llama, 8B    | 계열 축 비교,**gated** — 아래 참고                  |
+| 모델                                 | 계열/크기  | 비고                                      |
+| ------------------------------------ | ---------- | ----------------------------------------- |
+| `Qwen/Qwen2.5-3B-Instruct`         | Qwen, 소형 | 다운로드 빠름, 기본값                     |
+| `Qwen/Qwen2.5-7B-Instruct`         | Qwen, 중형 | 크기 축 비교 (Qwen 계열)                  |
+| `Qwen/Qwen2.5-14B-Instruct`        | Qwen, 대형 | 크기 축 비교 (Qwen 계열)                  |
+| `meta-llama/Llama-3.1-8B-Instruct` | Llama, 8B  | 계열 축 비교,**gated** — 아래 참고 |
 
 각 모델은 처음 요청이 올 때 자동으로 다운로드·로드됩니다(지연 로딩). 모델 가중치는 `~/.cache/huggingface/hub/`에 캐시되어 재실행 시 다시 받지 않습니다.
 
-> Phi 계열은 원래 7B급(`microsoft/Phi-3-small-8k-instruct`)으로 맞추려 했으나, 이 환경의 transformers(5.14.1)에서 그 저장소의 커스텀 모델링 코드가 요구하는 패키지를 다 설치해도(`requests`/`tiktoken`/`einops`/`pytest`) 결국 `rope_scaling` 설정 파싱에서 `Field short_factor is required` 오류로 로드가 안 됐습니다 — 커스텀 코드와 이 transformers 버전 간 호환성 문제로 보입니다. 그래서 Phi는 transformers에 네이티브로 포함돼 안정적으로 도는 `Phi-3.5-mini-instruct`(3.8B)로 되돌렸습니다. 즉 계열 축에서 Phi만 다른 모델보다 작다는 점을 감안해서 비교하세요.
+> `mistralai/Mistral-7B-Instruct-v0.3`, `microsoft/Phi-3.5-mini-instruct`, `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct`도 계열 축에 넣어봤지만 이 환경(transformers 5.14.1)에서 안정적으로 돌지 않아 카탈로그에서 뺐습니다 — Phi-3.5-mini는 생성 시 `AttributeError: 'DynamicCache' object has no attribute 'seen_tokens'`, EXAONE-3.5는 `TypeError: create_causal_mask() got an unexpected keyword argument 'input_embeds'`로 죽었는데, 둘 다 저장소의 커스텀 모델링 코드(`trust_remote_code=True`로 실행됨)가 이 transformers 버전의 내부 API보다 오래돼서 생기는 문제입니다. Mistral-7B는 이 환경에서 호출이 반복적으로 실패했습니다. transformers를 올리거나 각 저장소가 코드를 업데이트하면 다시 추가할 수 있습니다.
 >
-> EXAONE-3.5와 Llama는 저장소에 포함된 커스텀 모델링 코드를 실행해야 로드됩니다(`trust_remote_code=True`). 둘 다 제작사(LG AI Research, Meta)의 공식 저장소라 허용했지만, 카탈로그에 다른 저장소를 추가할 때는 이 옵션이 임의 코드 실행을 허용한다는 점을 감안해 출처를 확인하세요.
+> Llama는 저장소에 포함된 커스텀 모델링 코드를 실행해야 로드됩니다(`trust_remote_code=True`). 원 제작사(Meta) 공식 저장소라 허용했지만, 카탈로그에 다른 저장소를 추가할 때는 이 옵션이 임의 코드 실행을 허용한다는 점을 감안해 출처를 확인하세요.
 
 **gated 모델(Llama, Gemma 등) 접근하기**: Hugging Face 계정으로 해당 모델 페이지(예: `huggingface.co/meta-llama/Llama-3.1-8B-Instruct`)에서 라이선스에 동의하고, [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)에서 Read 토큰을 발급받은 뒤 `config/config.php`에 등록합니다.
 
@@ -989,13 +994,13 @@ gui_web STEP4 탭의 "로컬 LLM(DGX Spark)" 패널에서: **① "작동 유무 
 - ![baseon_LLM_labeling_2](baseon_LLM_labeling_2.png)
 - ![baseon_LLM_labeling_3](baseon_LLM_labeling_3.png)
 
-
-
 ### 로컬 LLM 다중 모델 비교 결과
 
+gui_web STEP4의 "로컬 LLM 다중 모델 비교" 탭에서 "전체 모델 비교 실행"을 누르면 카탈로그의 모든 모델을 순서대로 돌려 군집별 라벨 일치도, 818건 라벨 분포, 모델별 "기존 분류 → LLM 제안" 흐름표를 나란히 보여줍니다. 실행이 끝나면 결과가 `step_4_process/output/multimodel_runs.jsonl`에 자동 저장되어(`api_save_multimodel_run.php`), 매번 다시 돌리지 않고도 "이전 기록" 드롭다운(`api_list_multimodel_runs.php`)에서 지난 실행을 다시 불러올 수 있습니다.
 
+결과 위쪽엔 "종합 분석"이 자동으로 뜹니다 — 군집별로 2개 이상 모델이 동의한 비율, 어느 모델이 다수 의견과 가장 자주/적게 일치했는지를 표+문장으로 요약합니다. 이어서 "모델별 라벨 사용 비교"(818건 기준 그룹 막대 그래프)와 "모델 쌍별 일치도"(4x4 히트맵, 두 모델이 5개 군집 중 몇 개에서 같은 라벨을 냈는지)가 뜹니다.
 
-
+카드 맨 아래 "여러 번 실행한 기록 종합"에서 "저장된 기록 전체로 재현성 분석"을 누르면, `multimodel_runs.jsonl`에 쌓인 **모든** 실행을 모아 모델·군집 조합마다 가장 많이 나온 라벨(최빈값)과 그 비율을 계산합니다(`api_multimodel_stability.php`). 비율이 70% 이상이면 초록(안정적), 40~70%면 노랑, 40% 미만이면 빨강으로 표시됩니다 — "전체 모델 비교 실행"을 여러 번 돌릴수록 이 표가 더 믿을 만해집니다.
 
 ### 17.4 두 분기 비교 시 유의점
 
@@ -1022,10 +1027,27 @@ python3 generate_report.py    # STEP1(자체) + STEP2/3(모듈로 재사용) 데
 
 ```bash
 cd gui_web
-php -S localhost:8000
+php -S localhost:9000
 ```
 
-브라우저에서 `http://localhost:8000/report.php` 접속. 재생성 스크립트를 따로 돌릴 필요 없이 요청마다 STEP1~3 산출물을 그 자리에서 다시 읽습니다(STEP4는 버튼을 눌러야 그때 API/로컬 LLM을 호출).
+브라우저에서 `http://localhost:9000/report.php` 접속. 재생성 스크립트를 따로 돌릴 필요 없이 요청마다 STEP1~3 산출물을 그 자리에서 다시 읽습니다(STEP4는 버튼을 눌러야 그때 API/로컬 LLM을 호출).
+
+DGX Spark에서 두 서버(리포트 :9000, 로컬 LLM :8500)를 항상 켜두려면 `start_servers.sh`를 직접 실행하는 대신 systemd 사용자 서비스로 등록해두는 게 편합니다 — 로그아웃해도 안 꺼지고, 죽으면 자동 재시작됩니다.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/step1-report.service systemd/step1-localllm.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now step1-report.service
+systemctl --user enable --now step1-localllm.service
+loginctl enable-linger "$USER"   # 로그아웃 후에도 서비스가 유지되게 함
+
+# 상태 확인 / 로그
+systemctl --user status step1-report.service step1-localllm.service
+journalctl --user -u step1-localllm.service -f
+```
+
+유닛 파일(`systemd/*.service`)은 `%h`(홈 디렉터리) 기준 상대 경로를 쓰므로 별도 수정 없이 그대로 복사해 쓸 수 있습니다.
 
 ### 18.3 리포트 구성
 

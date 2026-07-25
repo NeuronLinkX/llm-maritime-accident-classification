@@ -6,7 +6,9 @@
       "Bash(python3 -c ' *)",
       "Bash(python3 -m json.tool)",
       "Bash(python3 generate_report.py)",
-      "Bash(php -l /home/jiwoo/Desktop/workspace/SBERT/step_1/gui_web/report.php)"
+      "Bash(php -l /home/jiwoo/Desktop/workspace/SBERT/step_1/gui_web/report.php)",
+      "Bash(php -l lib_llm_common.php)",
+      "Bash(php -r ' *)"
     ]
   }
 }

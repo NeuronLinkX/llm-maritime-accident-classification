@@ -1,0 +1,22 @@
+<svg width="680" height="296" viewBox="0 0 680 296" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>PaddleOCR 처리 속도 벤치마크</title>
+<desc>서버 모델 대비 경량 모델은 약 3.7배, GPU 가속은 약 9.5배 빠르다. 페이지당 처리 시간은 서버 모델 약 31초, 경량 모델 약 8.5초, GPU 가속 약 3.3초다.</desc>
+
+<rect width="680" height="296" fill="#FFFFFF"/>
+<text x="20" y="24" font-family="Malgun Gothic, sans-serif" font-size="15" font-weight="700" fill="#2C2C2A">PaddleOCR 처리 속도 벤치마크 (페이지당)</text>
+
+<!-- Row1: 서버 모델 -->
+<text x="20" y="52" font-family="Malgun Gothic, sans-serif" font-size="12.5" fill="#3A3A38">서버 모델 (det=server, 기본값)</text>
+<rect x="20" y="58" width="440" height="28" rx="5" fill="#E3E1D8" stroke="#8A887E" stroke-width="0.75"/>
+<text x="470" y="72" dominant-baseline="central" font-family="Malgun Gothic, sans-serif" font-size="13" font-weight="700" fill="#2C2C2A">약 31초 / 페이지</text>
+
+<!-- Row2: 경량 모델 -->
+<text x="20" y="142" font-family="Malgun Gothic, sans-serif" font-size="12.5" fill="#3A3A38">경량 모델 (det=mobile)</text>
+<rect x="20" y="148" width="120" height="28" rx="5" fill="#CDEEE2" stroke="#0F6E56" stroke-width="0.75"/>
+<text x="150" y="162" dominant-baseline="central" font-family="Malgun Gothic, sans-serif" font-size="13" font-weight="700" fill="#0A4A3D">약 8.5초 / 페이지 · 3.7배 ↑</text>
+
+<!-- Row3: GPU 가속 -->
+<text x="20" y="232" font-family="Malgun Gothic, sans-serif" font-size="12.5" fill="#3A3A38">GPU 가속</text>
+<rect x="20" y="238" width="47" height="28" rx="5" fill="#DCD8F9" stroke="#534AB7" stroke-width="0.75"/>
+<text x="77" y="252" dominant-baseline="central" font-family="Malgun Gothic, sans-serif" font-size="13" font-weight="700" fill="#26215C">약 3.3초 / 페이지 · 9.5배 ↑</text>
+</svg>

@@ -27,6 +27,7 @@
     --bad-bg: #f5e1da;
     --badge-paddle-bg: #e6dcf0;
     --badge-paddle-fg: #63368f;
+    --hl-bg: #fdf1b8;
     --shadow: 0 1px 0 rgba(27, 36, 49, 0.08);
     /* 카테고리/군집 식별용 팔레트 8슬롯 — dataviz 레퍼런스 팔레트(고정 순서, CVD 검증됨) */
     --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-4: #008300;
@@ -53,6 +54,7 @@
     --bad-bg: #331e17;
     --badge-paddle-bg: #2c2438;
     --badge-paddle-fg: #c6a8ec;
+    --hl-bg: #4a3f14;
     --shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
     --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
     --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #93a3a1;
@@ -79,6 +81,7 @@
       --bad-bg: #331e17;
       --badge-paddle-bg: #2c2438;
       --badge-paddle-fg: #c6a8ec;
+      --hl-bg: #4a3f14;
       --shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
       --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
       --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #93a3a1;
@@ -188,6 +191,8 @@
     flex: none; font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--sea-700); font-family: ui-monospace, "SF Mono", Consolas, monospace;
   }
+  .baseline-note .bn-body { flex: 1 1 auto; }
+  .bn-highlight { background: var(--hl-bg); color: inherit; padding: 1px 4px; border-radius: 3px; }
   .genline {
     color: var(--ink-500); font-size: 11.5px; font-family: ui-monospace, "SF Mono", Consolas, monospace;
     margin-top: 2px;
@@ -472,8 +477,8 @@
   .sim-toggle .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok-fg); }
   .sim-toggle.paused .dot { background: var(--ink-500); }
   .sim-canvas-wrap { position: relative; border-radius: 6px; overflow: hidden; background: var(--paper-50); margin-top: 12px; }
-  #sim-canvas { display: block; width: 100%; height: 560px; cursor: grab; touch-action: none; }
-  #sim-canvas.dragging { cursor: grabbing; }
+  .sim3d-canvas { display: block; width: 100%; height: 560px; cursor: grab; touch-action: none; }
+  .sim3d-canvas.dragging { cursor: grabbing; }
   .sim-hint {
     position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--ink-500);
     background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 3px 10px;
@@ -665,6 +670,50 @@
   .mm-bar-n { font-size: 11px; color: var(--ink-500); vertical-align: middle; }
   .mm-model-crosstab { margin-bottom: 22px; }
   .mm-model-crosstab-name { font-size: 12px; font-weight: 700; color: var(--sea-700); margin-bottom: 6px; }
+  .mm-history-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--ink-700); }
+  .mm-history-count {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px;
+    padding: 0 7px; border-radius: 999px; background: var(--sea-100); color: var(--sea-700);
+    font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .mm-history-list {
+    margin-top: 8px; max-height: 260px; overflow-y: auto;
+    border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel);
+  }
+  .mm-history-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 12px; font-size: 12px; color: var(--ink-900); cursor: pointer;
+    border-bottom: 1px solid var(--line);
+  }
+  .mm-history-item:last-child { border-bottom: none; }
+  .mm-history-item:hover { background: var(--sea-100); }
+  .mm-history-item.active { background: var(--sea-100); font-weight: 700; }
+  .mm-history-item .mhi-badge { flex: none; font-size: 11px; color: var(--ink-500); font-variant-numeric: tabular-nums; }
+  .mm-history-empty { padding: 10px 12px; font-size: 12px; color: var(--ink-500); }
+  table.mm-bench td:first-child, table.mm-bench th:first-child { text-align: left; }
+  .mm-legend-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 4px; }
+  .mm-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-700); font-weight: 600; }
+  .mm-legend-item .sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .mm-diff-svg { width: 100%; height: auto; font-family: -apple-system, "Pretendard", sans-serif; }
+  .mm-diff-svg text { fill: var(--ink-700); }
+  table.mm-pairwise td.self { color: var(--ink-500); background: var(--paper-50); }
+  .mm-stability-block { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+  table.mm-stability td .stab-pct { display: block; font-size: 10.5px; color: var(--ink-500); margin-top: 1px; }
+  table.mm-stability td.stab-high { background: var(--ok-bg); }
+  table.mm-stability td.stab-mid { background: var(--warn-bg); }
+  table.mm-stability td.stab-low { background: var(--bad-bg); }
+
+  /* ---- STEP3: 실제 임베딩 유사도 히트맵/히스토그램 ---- */
+  .sim-subhead { font-size: 13px; font-weight: 700; color: var(--ink-900); margin-bottom: 4px; }
+  .sim-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  table.sim-heatmap th, table.sim-heatmap td { white-space: normal; max-width: 130px; }
+  table.sim-heatmap .ct-rowhead { white-space: nowrap; max-width: none; }
+  .sim-hist-svg { width: 100%; height: auto; }
+  .sim-hist-axis { font-size: 9.5px; fill: var(--ink-500); }
+  .sim-hist-grid { stroke: var(--line); stroke-width: 1; }
+  .sim-hist-legend { display: flex; gap: 18px; margin-bottom: 6px; }
+  .sim-hist-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-700); font-weight: 600; }
+  .sim-hist-legend-item .sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 
   /* ---- 워드클라우드 확대 모달(라이트박스) ----
      카드 안에 축소되어 잘려 보이던 워드클라우드를 클릭하면 원본 비율
@@ -726,6 +775,7 @@
             <a href="#step3-scatter">군집 산점도</a>
             <a href="#step3-clusters">군집별 주요 인자</a>
             <a href="#step3-conclusion">소결</a>
+            <a href="#step3-similarity">실제 유사도 예시</a>
           </div>
         </div>
         <div class="nav-group">
@@ -839,7 +889,7 @@
 
     <section class="card" id="step2-scatter">
       <div class="card-head"><h2>임베딩 공간 (t-SNE 2D 투영)</h2></div>
-      <div class="card-note">채택 모델(<code id="scatter-model"></code>)의 768차원 임베딩을 t-SNE로 2D에 투영했습니다. 점 하나 = 문서 한 건. 원래 KMST 카테고리 라벨로 색칠했습니다 — 점을 올리면 문서명이 뜹니다. 카테고리 수가 많아 상위 7종 외에는 "기타"로 묶었습니다.</div>
+      <div class="card-note">채택 모델(<code id="scatter-model"></code>)의 768차원 임베딩을 t-SNE로 2D에 투영했습니다. 점 하나 = 문서 한 건. 원래 KMST 카테고리 라벨로 색칠했습니다.  점을 올리면 문서명이 뜹니다. 카테고리 수가 많아 상위 7종 외에는 "기타"로 묶었습니다.</div>
       <div class="scatter-wrap">
         <div class="scatter-legend" id="scatter-legend2"></div>
         <svg class="scatter" id="scatter-svg2" viewBox="0 0 640 520" preserveAspectRatio="xMidYMid meet"></svg>
@@ -870,7 +920,7 @@
         <button class="sim-toggle" id="sim-toggle" type="button"><span class="dot"></span><span id="sim-toggle-label">재생 중</span></button>
       </div>
       <div class="sim-canvas-wrap">
-        <canvas id="sim-canvas"></canvas>
+        <canvas id="sim-canvas" class="sim3d-canvas"></canvas>
         <span class="sim-hint">드래그로 회전 · 스크롤/핀치로 확대</span>
       </div>
       <div class="sim-reduced-note" id="sim-reduced-note">시스템의 "동작 줄이기" 설정이 감지되어 자동 회전은 꺼져 있습니다. 드래그로는 계속 회전시켜 볼 수 있습니다.</div>
@@ -931,6 +981,17 @@
       <div id="conclusion"></div>
     </section>
 
+    <section class="card" id="step3-similarity">
+      <div class="card-head"><h2>문서 간 코사인 유사도 (실제 임베딩)</h2></div>
+      <div class="sim-subhead">818건 전체 쌍의 유사도 분포</div>
+      <div class="card-note">818건에서 나올 수 있는 모든 문서 쌍(약 33만 쌍)을 STEP 2 채택 모델(ko-sroberta-sts)의 실제 임베딩으로 전수 계산한 결과입니다.  표본이 아닙니다. "같은 군집끼리"와 "다른 군집끼리"를 같은 구간으로 나눠 비교합니다.</div>
+      <div id="similarity-histogram"></div>
+
+      <div class="sim-subhead" style="margin-top:22px;">군집별 대표 문서 예시</div>
+      <div class="card-note">818건 전체를 한 표에 담을 수는 없어서, 군집마다 그 군집의 중심 벡터에 가장 가까운 대표 문서 2개씩을 뽑았습니다. 같은 군집끼리(대각선 근처 블록)의 값이 다른 군집 문서와의 값보다 대체로 높게 나오면, 군집화가 실제 의미 유사도를 잘 반영했다는 뜻입니다.</div>
+      <div id="similarity-sample"></div>
+    </section>
+
     </section>
 
   <!-- ===================== STEP 4 · LLM 구조화 레이블링 (실험적) ===================== -->
@@ -939,7 +1000,12 @@
       <div class="eyebrow">STEP 4 · LLM 구조화 레이블링 (실험적)</div>
       <h1>군집 → 사고원인 분류 레이블링</h1>
       <div class="subhead">STEP 3의 군집을 사전 정의된 사고원인 체계로 구조화하는 단계입니다. 아직 검증 전 실험 단계라 두 경로를 나란히 검토합니다.  결과를 그대로 결론으로 쓰지 않습니다.</div>
-      <div class="baseline-note"><span class="bn-tag">baseline</span>아직 확립된 baseline이 없습니다. 향후 사람이 직접 분류한 라벨(또는 선행 연구의 워드클라우드 기반 해석)과 대조해 LLM 제안의 정확도를 검증할 계획입니다. 지금 나오는 결과는 사람 검증 전 초안입니다.</div>
+      <div class="baseline-note"><span class="bn-tag">baseline</span><div class="bn-body">
+        사람이 직접 매긴 정답 라벨은 아직 없습니다. 대신 정식 baseline이 나오기 전까지 쓸 잠정 기준선을 아래처럼 잡습니다.<br><br>
+        ① 기존 분류(파일명 접두어)와의 대조표 : 2개 이상 모델이 일치하면 잠정 채택, 갈리면 재검토 필요로 표시됩니다.<br><br>
+        ② 서로 다른 모델(Qwen 3B/7B/14B, Llama-3.1-8B, GPT-4o-mini) 간 라벨 합의 여부.<br><br>
+        <mark class="bn-highlight">③ (다음 단계, 아직 미착수) 군집당 5~6건씩 총 30건 내외를 사람이 직접 라벨링해 실제 정확도를 계산.</mark><br><br>
+      </div></div>
     </header>
 
     <div class="step4-tabs" role="tablist">
@@ -1008,12 +1074,29 @@
         <button class="llm-run-btn" id="mm-run-btn" type="button">전체 모델 비교 실행</button>
         <button class="llm-cancel-btn" id="mm-cancel-btn" type="button" style="display:none">취소</button>
       </div>
+      <div class="mm-history-row">
+        <label>이전 기록</label>
+        <span class="mm-history-count" id="mm-history-count">0건</span>
+        <button class="llm-check-btn" id="mm-history-toggle-btn" type="button">목록 보기</button>
+      </div>
+      <div class="mm-history-list" id="mm-history-list" style="display:none"></div>
       <div class="llm-status" id="mm-status"></div>
+      <div id="mm-analysis"></div>
+      <div id="mm-diff-chart"></div>
+      <div id="mm-pairwise"></div>
       <div id="mm-results"></div>
+
+      <div class="mm-stability-block">
+        <div class="mm-subhead" style="margin-top:0;">여러 번 실행한 기록 종합</div>
+        <div class="card-note">"전체 모델 비교 실행"을 여러 번 돌린 기록을 모아, 모델·군집마다 가장 많이 나온 라벨(최빈값)과 그 비율을 봅니다. 비율이 낮으면 그 모델·군집 조합은 실행할 때마다 라벨이 잘 안정되지 않는다는 뜻입니다.</div>
+        <button class="llm-check-btn" id="mm-stability-btn" type="button">저장된 기록 전체로 재현성 분석</button>
+        <div id="mm-stability-status" class="llm-status"></div>
+        <div id="mm-stability-results"></div>
+      </div>
     </section>
   </section>
 
-  <footer class="doc-end">LLM 기반 사고원인 분류체계 구축 연구 — STEP 1~4 통합 리포트.</footer>
+  <footer class="doc-end">LLM 기반 사고원인 분류체계 구축 연구 / STEP 1~4 통합 리포트.</footer>
 </div>
 
 <div id="float-tip" role="tooltip"></div>
@@ -1028,14 +1111,16 @@
   const DATA = /*__DATA__*/ {
     step1: { summary: {}, rows: [], excluded: [], categories: [], formats: [], modes: [], generated_at: "", source_mode: "" },
     step2: { summary: {}, models: [], scatter: { points: [], legend: [], legend_keys: [] }, scatter3d: { points: [], legend: [], legend_keys: [] }, top_pairs: [], bottom_pairs: [], graph: [], generated_at: "", source_mode: "" },
-    step3: { summary: {}, k_selection: [], clusters: [], scatter: { points: [], n_clusters: 0 }, insights: {}, generated_at: "", source_mode: "" }
+    step3: { summary: {}, k_selection: [], clusters: [], scatter: { points: [], n_clusters: 0 }, insights: {}, similarity_sample: null, similarity_histogram: null, generated_at: "", source_mode: "" }
   } /*__END_DATA__*/;
 
   /* ================= 공용 유틸 (STEP1/2/3이 함께 씀) ================= */
   const SERIES_VARS = ["--series-1","--series-2","--series-3","--series-4","--series-5","--series-6","--series-7","--series-8"];
 
   function esc(s) {
-    return (s || "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    // (s || "")는 s가 숫자 0일 때 falsy라 빈 문자열로 지워버린다(예: "군집 0"이
+    // "군집 "이 되는 버그) : null/undefined만 걸러내는 ??를 써야 한다.
+    return (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
   function fmt4(v) { return Number(v).toFixed(4); }
 
@@ -1133,6 +1218,295 @@
   });
   document.getElementById("lb-close").addEventListener("click", closeLightbox);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLightbox(); });
+
+  // ---- 유사도 네트워크 시뮬레이션 (3D, canvas + requestAnimationFrame) ----
+  // t-SNE 3D 좌표를 손으로 만든 원근 투영(perspective projection)으로 화면에
+  // 그린다 — three.js 같은 외부 라이브러리 없이, 회전행렬 2개(yaw, pitch)와
+  // focal-length 나누기만으로 충분하다. 노드는 살짝 흔들리고(idle jitter)
+  // 간선은 은은하게 맥동(pulse)한다 — prefers-reduced-motion이면 자동회전/맥동은
+  // 끄되, 드래그 회전은 계속 허용한다.
+  //
+  // STEP2(카테고리 색)와 STEP3(군집 색)가 이 함수 하나를 공유하므로, 다른
+  // IIFE에서도 부를 수 있게 최상위(공용 유틸) 스코프에 둔다 — IIFE 안에 있으면
+  // 그 IIFE 밖에서는 안 보인다.
+  //
+  // 마우스를 올리면(드래그 중이 아닐 때) 가장 가까운 문서 하나를 찾아 툴팁으로
+  // 보여주고, 그 문서와 이웃(간선으로 연결된 문서)만 밝게, 나머지는 옅게
+  // 그려서 "이 문서가 어떤 문서들과 유사한지"를 한눈에 보게 한다.
+  function initSimulation(scatter3d, graph, opts) {
+    opts = opts || {};
+    const canvasId = opts.canvasId || "sim-canvas";
+    const toggleId = opts.toggleId || "sim-toggle";
+    const toggleLabelId = opts.toggleLabelId || "sim-toggle-label";
+    const reducedNoteId = opts.reducedNoteId || "sim-reduced-note";
+    const colorField = opts.colorField || "category";
+
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const wrap = canvas.parentElement;
+    const ctx = canvas.getContext("2d");
+    if (!scatter3d.points.length) { wrap.style.display = "none"; return; }
+
+    const colorOf = buildColorMap(scatter3d.legend_keys);
+    const byId = {};
+    scatter3d.points.forEach(p => byId[p.id] = p);
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let W = 0, H = 0;
+    function resize() {
+      const rect = wrap.getBoundingClientRect();
+      W = rect.width; H = rect.height;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    const xs = scatter3d.points.map(p => p.x), ys = scatter3d.points.map(p => p.y), zs = scatter3d.points.map(p => p.z);
+    const mid = arr => (Math.max(...arr) + Math.min(...arr)) / 2;
+    const span = arr => (Math.max(...arr) - Math.min(...arr)) || 1;
+    const cx0 = mid(xs), cy0 = mid(ys), cz0 = mid(zs);
+    const extent = Math.max(span(xs), span(ys), span(zs));
+    const k = 220 / extent;
+
+    const nodes = scatter3d.points.map((p, i) => ({
+      ...p,
+      px: (p.x - cx0) * k, py: (p.y - cy0) * k, pz: (p.z - cz0) * k,
+      phase: (i * 37.13) % (Math.PI * 2),
+      speed: 0.35 + (i % 7) * 0.05,
+    }));
+    const nodeIndexById = {};
+    nodes.forEach(n => nodeIndexById[n.id] = n);
+    const edges = graph.map((e, i) => ({
+      a: byId[e.a], b: byId[e.b], sim: e.sim,
+      phase: (i * 19.7) % (Math.PI * 2),
+    })).filter(e => e.a && e.b);
+
+    // 문서 하나를 hover했을 때 "이 문서와 연결된 이웃"을 즉시 알 수 있게
+    // id → 이웃 id 집합을 미리 만들어 둔다.
+    const neighborsOf = new Map();
+    edges.forEach(e => {
+      if (!neighborsOf.has(e.a.id)) neighborsOf.set(e.a.id, new Set());
+      if (!neighborsOf.has(e.b.id)) neighborsOf.set(e.b.id, new Set());
+      neighborsOf.get(e.a.id).add(e.b.id);
+      neighborsOf.get(e.b.id).add(e.a.id);
+    });
+
+    const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let playing = !reduceMotion;
+    let t0 = performance.now();
+    let frozenT = 0;
+
+    let yaw = 0.55, pitch = -0.28;
+    let dragging = false, lastPX = 0, lastPY = 0;
+
+    const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
+    let zoom = 1;
+
+    let hoveredId = null;
+    let lastProj = new Map();
+
+    const FOCAL = 460;
+    function project(n, t) {
+      const amp = 1.6;
+      const jx = Math.sin(t * n.speed + n.phase) * amp;
+      const jy = Math.cos(t * n.speed * 0.8 + n.phase) * amp;
+      const jz = Math.sin(t * n.speed * 0.6 + n.phase * 1.3) * amp;
+      const x = n.px + jx, y = n.py + jy, z = n.pz + jz;
+      const x1 = x * Math.cos(yaw) + z * Math.sin(yaw);
+      const z1 = -x * Math.sin(yaw) + z * Math.cos(yaw);
+      const y2 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
+      const z2 = y * Math.sin(pitch) + z1 * Math.cos(pitch);
+      const scale = FOCAL / (FOCAL + z2);
+      return { sx: W / 2 + x1 * scale * zoom, sy: H / 2 + y2 * scale * zoom, scale };
+    }
+
+    function draw(t) {
+      ctx.clearRect(0, 0, W, H);
+
+      const projByNode = new Map();
+      nodes.forEach(n => projByNode.set(n.id, project(n, t)));
+      lastProj = projByNode;
+
+      const neighborSet = hoveredId ? (neighborsOf.get(hoveredId) || new Set()) : null;
+
+      edges.forEach(e => {
+        const pa = projByNode.get(e.a.id), pb = projByNode.get(e.b.id);
+        if (!pa || !pb) return;
+        const touchesHover = hoveredId && (e.a.id === hoveredId || e.b.id === hoveredId);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 0.9 + e.phase);
+        const baseAlpha = 0.05 + Math.max(0, e.sim - 0.5) * 0.45;
+        const depthFade = (pa.scale + pb.scale) / 2;
+        let alpha = Math.min(0.5, (baseAlpha + pulse * 0.1) * depthFade);
+        if (hoveredId) alpha = touchesHover ? Math.min(0.95, alpha + 0.5) : alpha * 0.12;
+        ctx.strokeStyle = touchesHover ? resolveVar("var(--series-6)") : resolveVar("var(--sea-500)");
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = touchesHover ? 1.8 : 1;
+        ctx.beginPath();
+        ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy);
+        ctx.stroke();
+      });
+
+      const ordered = nodes.map(n => ({ n, p: projByNode.get(n.id) })).sort((a, b) => a.p.scale - b.p.scale);
+      ordered.forEach(({ n, p }) => {
+        const isHovered = n.id === hoveredId;
+        const isNeighbor = neighborSet && neighborSet.has(n.id);
+        let r = Math.max(1.1, 3.1 * p.scale * zoom);
+        let alpha = Math.min(1, 0.35 + p.scale * 0.6);
+        if (hoveredId) {
+          if (isHovered) { r *= 1.9; alpha = 1; }
+          else if (isNeighbor) { r *= 1.3; alpha = Math.min(1, alpha + 0.25); }
+          else alpha *= 0.15;
+        }
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+        ctx.fillStyle = resolveVar(colorOf[n[colorField]] || "var(--series-8)");
+        ctx.globalAlpha = alpha;
+        ctx.fill();
+        if (isHovered) {
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#fff";
+          ctx.globalAlpha = 1;
+          ctx.stroke();
+        }
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function loop(now) {
+      const t = playing ? (now - t0) / 1000 : frozenT;
+      if (playing && !dragging) yaw += 0.0022;
+      draw(t);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+
+    // ---- hover: 가장 가까운 노드를 찾아 툴팁 + 이웃 강조 ----
+    function findNodeNear(px, py) {
+      let best = null, bestD = Infinity;
+      nodes.forEach(n => {
+        const p = lastProj.get(n.id);
+        if (!p) return;
+        const hitR = Math.max(6, 3.1 * p.scale * zoom) + 5;
+        const d = Math.hypot(p.sx - px, p.sy - py);
+        if (d <= hitR && d < bestD) { bestD = d; best = { n, p }; }
+      });
+      return best;
+    }
+    function nodeTipHtml(n) {
+      const tag = colorField === "cluster" ? `군집 ${esc(n.cluster)}` : esc(n.category);
+      const nCount = (neighborsOf.get(n.id) || new Set()).size;
+      return `<b>${esc(n.filename || n.id)}</b><br>${tag} · 이웃 ${nCount}개`;
+    }
+    function showNodeTip(clientX, clientY, n) {
+      floatTip.innerHTML = nodeTipHtml(n);
+      floatTip.classList.add("show");
+      const tipRect = floatTip.getBoundingClientRect();
+      let left = clientX + 14;
+      left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+      let top = clientY + 14;
+      if (top + tipRect.height > window.innerHeight - 8) top = clientY - tipRect.height - 14;
+      floatTip.style.left = `${left}px`;
+      floatTip.style.top = `${top}px`;
+    }
+
+    const pointers = new Map();
+    let pinchStartDist = 0, pinchStartZoom = 1;
+    const dist2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    canvas.addEventListener("pointerdown", (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 1) {
+        dragging = true;
+        canvas.classList.add("dragging");
+        lastPX = e.clientX; lastPY = e.clientY;
+        if (hoveredId) { hoveredId = null; hideFloatTip(); }
+      } else if (pointers.size === 2) {
+        dragging = false;
+        const pts = [...pointers.values()];
+        pinchStartDist = dist2(pts[0], pts[1]);
+        pinchStartZoom = zoom;
+      }
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!pointers.has(e.pointerId)) {
+        // 드래그 중이 아닌 순수 hover — 가까운 노드를 찾아 강조 + 툴팁
+        if (e.pointerType && e.pointerType !== "mouse") return;
+        const rect = canvas.getBoundingClientRect();
+        const hit = findNodeNear(e.clientX - rect.left, e.clientY - rect.top);
+        const newHoveredId = hit ? hit.n.id : null;
+        if (newHoveredId !== hoveredId) {
+          hoveredId = newHoveredId;
+          canvas.style.cursor = hoveredId ? "pointer" : (dragging ? "grabbing" : "grab");
+          if (!playing) draw(frozenT);
+        }
+        if (hit) showNodeTip(e.clientX, e.clientY, hit.n);
+        else hideFloatTip();
+        return;
+      }
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 2) {
+        const pts = [...pointers.values()];
+        const d = dist2(pts[0], pts[1]);
+        if (pinchStartDist > 0) {
+          zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * (d / pinchStartDist)));
+        }
+        if (!playing) draw(frozenT);
+        return;
+      }
+
+      if (!dragging) return;
+      const dx = e.clientX - lastPX, dy = e.clientY - lastPY;
+      lastPX = e.clientX; lastPY = e.clientY;
+      yaw += dx * 0.008;
+      pitch = Math.max(-1.35, Math.min(1.35, pitch + dy * 0.008));
+      if (!playing) draw(frozenT);
+    });
+    function endDrag(e) {
+      pointers.delete(e.pointerId);
+      if (pointers.size === 0) {
+        dragging = false;
+        canvas.classList.remove("dragging");
+      } else if (pointers.size === 1) {
+        const remaining = [...pointers.values()][0];
+        dragging = true;
+        lastPX = remaining.x; lastPY = remaining.y;
+      }
+    }
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointerleave", (e) => { endDrag(e); hoveredId = null; hideFloatTip(); });
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.0012);
+      zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+      if (!playing) draw(frozenT);
+    }, { passive: false });
+
+    if (reduceMotion) {
+      const reducedNoteEl = document.getElementById(reducedNoteId);
+      if (reducedNoteEl) reducedNoteEl.classList.add("show");
+    }
+
+    const toggle = document.getElementById(toggleId);
+    const label = document.getElementById(toggleLabelId);
+    toggle.addEventListener("click", () => {
+      playing = !playing;
+      toggle.classList.toggle("paused", !playing);
+      label.textContent = playing ? "재생 중" : "일시정지";
+      if (playing) t0 = performance.now() - frozenT * 1000;
+      else frozenT = (performance.now() - t0) / 1000;
+    });
+    if (reduceMotion) {
+      playing = false;
+      toggle.classList.add("paused");
+      label.textContent = "일시정지";
+    }
+  }
 
   /* ================= STEP 1 · 전처리 ================= */
   (function () {
@@ -1481,201 +1855,6 @@
       }).join("");
     }
 
-    // ---- 유사도 네트워크 시뮬레이션 (3D, canvas + requestAnimationFrame) ----
-    // t-SNE 3D 좌표를 손으로 만든 원근 투영(perspective projection)으로
-    // 화면에 그린다 — three.js 같은 외부 라이브러리 없이, 회전행렬 2개(yaw,
-    // pitch)와 focal-length 나누기만으로 충분하다. 노드는 살짝 흔들리고
-    // (idle jitter) 간선은 은은하게 맥동(pulse)한다 — prefers-reduced-motion이면
-    // 자동회전/맥동은 끄되, 드래그 회전은 계속 허용한다.
-    function initSimulation(scatter3d, graph) {
-      const canvas = document.getElementById("sim-canvas");
-      const wrap = canvas.parentElement;
-      const ctx = canvas.getContext("2d");
-      if (!scatter3d.points.length) { wrap.style.display = "none"; return; }
-
-      const colorOf = buildColorMap(scatter3d.legend_keys);
-      const byId = {};
-      scatter3d.points.forEach(p => byId[p.id] = p);
-
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      let W = 0, H = 0;
-      function resize() {
-        const rect = wrap.getBoundingClientRect();
-        W = rect.width; H = rect.height;
-        canvas.width = W * dpr; canvas.height = H * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      }
-      resize();
-      window.addEventListener("resize", resize);
-
-      const xs = scatter3d.points.map(p => p.x), ys = scatter3d.points.map(p => p.y), zs = scatter3d.points.map(p => p.z);
-      const mid = arr => (Math.max(...arr) + Math.min(...arr)) / 2;
-      const span = arr => (Math.max(...arr) - Math.min(...arr)) || 1;
-      const cx0 = mid(xs), cy0 = mid(ys), cz0 = mid(zs);
-      const extent = Math.max(span(xs), span(ys), span(zs));
-      const k = 220 / extent;
-
-      const nodes = scatter3d.points.map((p, i) => ({
-        ...p,
-        px: (p.x - cx0) * k, py: (p.y - cy0) * k, pz: (p.z - cz0) * k,
-        phase: (i * 37.13) % (Math.PI * 2),
-        speed: 0.35 + (i % 7) * 0.05,
-      }));
-      const nodeIndexById = {};
-      nodes.forEach(n => nodeIndexById[n.id] = n);
-      const edges = graph.map((e, i) => ({
-        a: byId[e.a], b: byId[e.b], sim: e.sim,
-        phase: (i * 19.7) % (Math.PI * 2),
-      })).filter(e => e.a && e.b);
-
-      const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      let playing = !reduceMotion;
-      let t0 = performance.now();
-      let frozenT = 0;
-
-      let yaw = 0.55, pitch = -0.28;
-      let dragging = false, lastPX = 0, lastPY = 0;
-
-      const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
-      let zoom = 1;
-
-      const FOCAL = 460;
-      function project(n, t) {
-        const amp = 1.6;
-        const jx = Math.sin(t * n.speed + n.phase) * amp;
-        const jy = Math.cos(t * n.speed * 0.8 + n.phase) * amp;
-        const jz = Math.sin(t * n.speed * 0.6 + n.phase * 1.3) * amp;
-        const x = n.px + jx, y = n.py + jy, z = n.pz + jz;
-        const x1 = x * Math.cos(yaw) + z * Math.sin(yaw);
-        const z1 = -x * Math.sin(yaw) + z * Math.cos(yaw);
-        const y2 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
-        const z2 = y * Math.sin(pitch) + z1 * Math.cos(pitch);
-        const scale = FOCAL / (FOCAL + z2);
-        return { sx: W / 2 + x1 * scale * zoom, sy: H / 2 + y2 * scale * zoom, scale };
-      }
-
-      function draw(t) {
-        ctx.clearRect(0, 0, W, H);
-
-        const projByNode = new Map();
-        nodes.forEach(n => projByNode.set(n.id, project(n, t)));
-
-        edges.forEach(e => {
-          const pa = projByNode.get(e.a.id), pb = projByNode.get(e.b.id);
-          if (!pa || !pb) return;
-          const pulse = 0.5 + 0.5 * Math.sin(t * 0.9 + e.phase);
-          const baseAlpha = 0.05 + Math.max(0, e.sim - 0.5) * 0.45;
-          const depthFade = (pa.scale + pb.scale) / 2;
-          ctx.strokeStyle = resolveVar("var(--sea-500)");
-          ctx.globalAlpha = Math.min(0.5, (baseAlpha + pulse * 0.1) * depthFade);
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy);
-          ctx.stroke();
-        });
-
-        const ordered = nodes.map(n => ({ n, p: projByNode.get(n.id) })).sort((a, b) => a.p.scale - b.p.scale);
-        ordered.forEach(({ n, p }) => {
-          const r = Math.max(1.1, 3.1 * p.scale * zoom);
-          ctx.beginPath();
-          ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
-          ctx.fillStyle = resolveVar(colorOf[n.category] || "var(--series-8)");
-          ctx.globalAlpha = Math.min(1, 0.35 + p.scale * 0.6);
-          ctx.fill();
-        });
-        ctx.globalAlpha = 1;
-      }
-
-      function loop(now) {
-        const t = playing ? (now - t0) / 1000 : frozenT;
-        if (playing && !dragging) yaw += 0.0022;
-        draw(t);
-        requestAnimationFrame(loop);
-      }
-      requestAnimationFrame(loop);
-
-      const pointers = new Map();
-      let pinchStartDist = 0, pinchStartZoom = 1;
-      const dist2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-
-      canvas.addEventListener("pointerdown", (e) => {
-        canvas.setPointerCapture(e.pointerId);
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-        if (pointers.size === 1) {
-          dragging = true;
-          canvas.classList.add("dragging");
-          lastPX = e.clientX; lastPY = e.clientY;
-        } else if (pointers.size === 2) {
-          dragging = false;
-          const pts = [...pointers.values()];
-          pinchStartDist = dist2(pts[0], pts[1]);
-          pinchStartZoom = zoom;
-        }
-      });
-      canvas.addEventListener("pointermove", (e) => {
-        if (!pointers.has(e.pointerId)) return;
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-        if (pointers.size === 2) {
-          const pts = [...pointers.values()];
-          const d = dist2(pts[0], pts[1]);
-          if (pinchStartDist > 0) {
-            zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * (d / pinchStartDist)));
-          }
-          if (!playing) draw(frozenT);
-          return;
-        }
-
-        if (!dragging) return;
-        const dx = e.clientX - lastPX, dy = e.clientY - lastPY;
-        lastPX = e.clientX; lastPY = e.clientY;
-        yaw += dx * 0.008;
-        pitch = Math.max(-1.35, Math.min(1.35, pitch + dy * 0.008));
-        if (!playing) draw(frozenT);
-      });
-      function endDrag(e) {
-        pointers.delete(e.pointerId);
-        if (pointers.size === 0) {
-          dragging = false;
-          canvas.classList.remove("dragging");
-        } else if (pointers.size === 1) {
-          const remaining = [...pointers.values()][0];
-          dragging = true;
-          lastPX = remaining.x; lastPY = remaining.y;
-        }
-      }
-      canvas.addEventListener("pointerup", endDrag);
-      canvas.addEventListener("pointercancel", endDrag);
-      canvas.addEventListener("pointerleave", endDrag);
-
-      canvas.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        const factor = Math.exp(-e.deltaY * 0.0012);
-        zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
-        if (!playing) draw(frozenT);
-      }, { passive: false });
-
-      if (reduceMotion) {
-        document.getElementById("sim-reduced-note").classList.add("show");
-      }
-
-      const toggle = document.getElementById("sim-toggle");
-      const label = document.getElementById("sim-toggle-label");
-      toggle.addEventListener("click", () => {
-        playing = !playing;
-        toggle.classList.toggle("paused", !playing);
-        label.textContent = playing ? "재생 중" : "일시정지";
-        if (playing) t0 = performance.now() - frozenT * 1000;
-        else frozenT = (performance.now() - t0) / 1000;
-      });
-      if (reduceMotion) {
-        playing = false;
-        toggle.classList.add("paused");
-        label.textContent = "일시정지";
-      }
-    }
-
     function pairRowHtml(row) {
       return `<tr>
         <td class="sim">${Number(row.similarity).toFixed(4)}</td>
@@ -1817,6 +1996,120 @@
         </div>`;
     }
 
+    // 군집별 대표 문서 간 "진짜" 코사인 유사도 히트맵 — similarity_sample.py가
+    // STEP2 채택 모델(ko-sroberta-sts)의 실제 임베딩으로 미리 계산해둔 값을
+    // 그대로 그린다(브라우저에서 재계산하지 않음). 대각선(자기 자신=1.000)은
+    // 별도 색으로 고정하고, 나머지는 대각선 제외 min~max로 정규화해 대비를 준다
+    // — 이 도메인은 문장 표현이 정형화돼 있어 유사도가 전반적으로 0.5~0.8대에
+    // 몰려 있으므로, 0~1 고정 스케일을 쓰면 색이 다 비슷해 보여 대비가 안 산다.
+    // 818건 전수 쌍(약 33만 쌍)의 실제 코사인 유사도 분포 — "같은 군집끼리"와
+    // "다른 군집끼리"를 겹쳐 그린 히스토그램. Y축은 그룹 내 비율(%)이라 두 그룹의
+    // 쌍 개수가 다르더라도(같은 군집 쌍이 훨씬 적음) 분포 모양만 공정하게 비교된다.
+    function renderSimilarityHistogram(hist) {
+      const el = document.getElementById("similarity-histogram");
+      if (!el) return;
+      if (!hist || !hist.length) {
+        el.innerHTML = `<div class="card-note">아직 <code>similarity_histogram.csv</code>가 없습니다 — <code>step_3_process/similarity_histogram.py</code>를 실행하면 생성됩니다.</div>`;
+        return;
+      }
+      const intraTotal = hist.reduce((s, b) => s + b.intra_count, 0) || 1;
+      const interTotal = hist.reduce((s, b) => s + b.inter_count, 0) || 1;
+      const bins = hist.map(b => ({
+        x0: b.bin_start, x1: b.bin_end,
+        intraP: b.intra_count / intraTotal, interP: b.inter_count / interTotal,
+        intraN: b.intra_count, interN: b.inter_count,
+      }));
+      const xMin = bins[0].x0, xMax = bins[bins.length - 1].x1;
+      const yMax = Math.max(0.001, ...bins.map(b => Math.max(b.intraP, b.interP))) * 1.08;
+
+      const W = 900, H = 260, padL = 44, padR = 12, padT = 10, padB = 30;
+      const plotW = W - padL - padR, plotH = H - padT - padB;
+      const sx = v => padL + (v - xMin) / (xMax - xMin || 1) * plotW;
+      const sy = v => padT + (1 - v / yMax) * plotH;
+
+      const intraColor = resolveVar("var(--series-1)");
+      const interColor = resolveVar("var(--series-6)");
+
+      const bars = bins.map(b => {
+        const x = sx(b.x0);
+        const w = Math.max(0.6, sx(b.x1) - sx(b.x0) - 0.6);
+        const yIntra = sy(b.intraP), yInter = sy(b.interP);
+        const tip = `유사도 ${b.x0.toFixed(2)} ~ ${b.x1.toFixed(2)}<br>같은 군집: ${(b.intraP * 100).toFixed(2)}% (${b.intraN.toLocaleString()}쌍)<br>다른 군집: ${(b.interP * 100).toFixed(2)}% (${b.interN.toLocaleString()}쌍)`;
+        return `<g data-tip="${esc(tip)}" tabindex="0">
+          <rect x="${x.toFixed(1)}" y="${yInter.toFixed(1)}" width="${w.toFixed(1)}" height="${(padT + plotH - yInter).toFixed(1)}" fill="${interColor}" fill-opacity="0.55"></rect>
+          <rect x="${x.toFixed(1)}" y="${yIntra.toFixed(1)}" width="${w.toFixed(1)}" height="${(padT + plotH - yIntra).toFixed(1)}" fill="${intraColor}" fill-opacity="0.55"></rect>
+        </g>`;
+      }).join("");
+
+      const xTickN = 6;
+      const xTicks = Array.from({ length: xTickN + 1 }, (_, i) => {
+        const v = xMin + (xMax - xMin) * i / xTickN;
+        return `<text x="${sx(v).toFixed(1)}" y="${H - padB + 15}" text-anchor="middle" class="sim-hist-axis">${v.toFixed(2)}</text>`;
+      }).join("");
+      const yTickN = 4;
+      const yTicks = Array.from({ length: yTickN + 1 }, (_, i) => {
+        const v = yMax * i / yTickN;
+        const y = sy(v);
+        return `<line x1="${padL}" x2="${W - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" class="sim-hist-grid"></line>
+          <text x="${padL - 7}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" class="sim-hist-axis">${(v * 100).toFixed(0)}%</text>`;
+      }).join("");
+
+      const totalPairs = intraTotal + interTotal;
+      el.innerHTML = `
+        <div class="sim-hist-legend">
+          <span class="sim-hist-legend-item"><span class="sw" style="background:${intraColor}"></span>같은 군집끼리 (${intraTotal.toLocaleString()}쌍)</span>
+          <span class="sim-hist-legend-item"><span class="sw" style="background:${interColor}"></span>다른 군집끼리 (${interTotal.toLocaleString()}쌍)</span>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" class="sim-hist-svg">${yTicks}${bars}${xTicks}</svg>
+        <div class="compare-note">문서 818건에서 나올 수 있는 전체 쌍(${totalPairs.toLocaleString()}쌍)을 실제로 계산했습니다. 표본이 아닙니다. 막대는 각 그룹 안에서의 비율(%)이라 그룹 크기 차이와 무관하게 분포 모양만 비교됩니다. 두 분포가 잘 갈라질수록 군집화가 임베딩 공간에서도 의미 있게 분리된 것이고, 겹칠수록 군집 경계가 무디다는 뜻입니다.</div>
+      `;
+    }
+
+    function renderSimilaritySample(sample) {
+      const el = document.getElementById("similarity-sample");
+      if (!el) return;
+      if (!sample || !sample.items || !sample.items.length) {
+        el.innerHTML = `<div class="card-note">아직 <code>similarity_sample.csv</code>가 없습니다 — <code>step_3_process/similarity_sample.py</code>를 실행하면 생성됩니다.</div>`;
+        return;
+      }
+      const items = sample.items, matrix = sample.matrix, n = items.length;
+      const colorOf = buildColorMap(DATA3.scatter.n_clusters || 5);
+
+      let offMin = Infinity, offMax = -Infinity;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          if (i === j) continue;
+          const v = matrix[i][j];
+          if (v < offMin) offMin = v;
+          if (v > offMax) offMax = v;
+        }
+      }
+      const range = (offMax - offMin) || 1;
+
+      const label = it => `<span class="sim-swatch" style="background:${colorOf[it.cluster]}"></span>군집${it.cluster} ${esc(it.category)}`;
+
+      const headCols = items.map(it => `<th>${label(it)}</th>`).join("");
+      const bodyRows = items.map((rowIt, i) => {
+        const cells = items.map((colIt, j) => {
+          const v = matrix[i][j];
+          const isDiag = i === j;
+          const alpha = isDiag ? 1 : Math.max(0, Math.min(1, (v - offMin) / range));
+          const bg = isDiag
+            ? "var(--sea-700)"
+            : `color-mix(in srgb, var(--sea-600) ${Math.round((0.12 + alpha * 0.76) * 100)}%, transparent)`;
+          const fg = isDiag ? "#fff" : "inherit";
+          return `<td style="background:${bg};color:${fg}" title="${esc(rowIt.id)} → ${esc(colIt.id)}: ${v.toFixed(3)}">${v.toFixed(3)}</td>`;
+        }).join("");
+        return `<tr><th class="ct-rowhead">${label(rowIt)}</th>${cells}</tr>`;
+      }).join("");
+
+      el.innerHTML = `<div class="crosstab-wrap"><table class="crosstab sim-heatmap">
+          <thead><tr><th></th>${headCols}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table></div>
+        <div class="compare-note" style="margin-top:10px;">색이 진할수록(대각선 제외) 실제 코사인 유사도가 높습니다. 대각선은 자기 자신과의 유사도(항상 1.000)라 별도 색으로 고정했습니다. 앞의 색 점은 소속 군집입니다.</div>`;
+    }
+
     renderGenline();
     renderStats(DATA3.summary);
     drawKChart("kchart-wcss", DATA3.k_selection, "wcss");
@@ -1824,6 +2117,8 @@
     renderScatter(DATA3.scatter);
     renderClusterCards(DATA3.clusters, buildColorMap(DATA3.scatter.n_clusters));
     renderConclusion(DATA3.insights);
+    renderSimilarityHistogram(DATA3.similarity_histogram);
+    renderSimilaritySample(DATA3.similarity_sample);
   })();
 
   /* ================= STEP 4 · LLM 구조화 레이블링 ================= */
@@ -1909,6 +2204,14 @@
       }).join("");
     }
 
+    // 군집 라벨링 결과(cluster, proposed_label)를 크로스탭 열 키로 쓸 때 공용으로
+    // 쓰는 함수 — 열을 "라벨"만으로 묶으면, 한 모델이 서로 다른 두 군집에 같은
+    // 라벨을 붙였을 때 두 군집이 한 열로 합쳐지면서 열 개수가 군집 수(5개)보다
+    // 줄어들어 "데이터가 빠진 것"처럼 오해를 살 수 있다. 그래서 열을 "군집 N:
+    // 라벨"로 묶어 군집 수만큼 열이 항상 균일하게 나오게 하고, 그러면서도 같은
+    // 라벨을 쓴 군집들은 라벨 이름이 같아서 여전히 눈에 띈다.
+    function clusterLabelKey(r) { return `군집 ${r.cluster}: ${r.proposed_label}`; }
+
     // 행(카테고리 A) × 열(카테고리 B) 교차표 — "어떤 기존 분류가 어떤 새 라벨로
     // 흘러갔는지"를 셀 색 농도(문서 수)로 한눈에 보여준다.
     function crosstabHtml(rows, rowKeyFn, colKeyFn) {
@@ -1921,7 +2224,13 @@
         colTotals[ck] = (colTotals[ck] || 0) + 1;
       });
       const sortedRows = Object.keys(rowTotals).sort((a, b) => rowTotals[b] - rowTotals[a]);
-      const sortedCols = Object.keys(colTotals).sort((a, b) => colTotals[b] - colTotals[a]);
+      // "군집 N: 라벨" 형태의 열은 군집 번호 순으로, 그 외엔 값이 큰 순으로 정렬한다.
+      const clusterNumOf = (key) => { const m = /^군집 (\d+):/.exec(key); return m ? Number(m[1]) : null; };
+      const sortedCols = Object.keys(colTotals).sort((a, b) => {
+        const na = clusterNumOf(a), nb = clusterNumOf(b);
+        if (na !== null && nb !== null) return na - nb;
+        return colTotals[b] - colTotals[a];
+      });
       const maxCell = Math.max(1, ...sortedRows.flatMap(rk => sortedCols.map(ck => (matrix[rk] && matrix[rk][ck]) || 0)));
 
       const theadCols = sortedCols.map(ck => `<th title="${esc(ck)}">${esc(ck)}</th>`).join("");
@@ -1953,8 +2262,8 @@
           <div class="compare-col"><h4>기존 분류(파일명 접두어)</h4>${barListHtml(origCounts)}</div>
           <div class="compare-col"><h4>LLM 제안 라벨</h4>${barListHtml(newCounts)}</div>
         </div>
-        <div class="compare-flow-head">기존 분류 → LLM 제안 라벨 흐름 (행: 기존 분류, 열: LLM 제안, 값: 문서 수)</div>
-        ${crosstabHtml(rows, r => r.original_category, r => r.proposed_label)}
+        <div class="compare-flow-head">기존 분류 → LLM 제안 라벨 흐름 (행: 기존 분류, 열: 군집·LLM 제안, 값: 문서 수)</div>
+        ${crosstabHtml(rows, r => r.original_category, clusterLabelKey)}
       `;
     }
 
@@ -2138,6 +2447,61 @@
     const mmResultsEl = document.getElementById("mm-results");
 
     function shortModelName(id) { return id.split("/").pop(); }
+    function modelSizeLabel(id) { const m = /(\d+(?:\.\d+)?)\s*B/i.exec(id); return m ? `${m[1]}B` : "?"; }
+
+    // 발표용 "종합 분석" — 개별 표를 다시 눈으로 세지 않아도 되게, 군집별 다수결
+    // 참여 횟수로 모델을 랭킹한 벤치마크 표 + 자동 생성 요약 문장을 만든다.
+    function renderMultiModelAnalysis(resultsByModel, order) {
+      const el = document.getElementById("mm-analysis");
+      if (!el) return;
+      const okIds = order.filter(mid => resultsByModel[mid] && resultsByModel[mid].ok);
+      if (okIds.length < 2) { el.innerHTML = ""; return; }
+
+      const clusterIds = [...new Set(DATA.step3.scatter.points.map(p => p.cluster))].sort((a, b) => a - b);
+      let clustersWithAgreement = 0;
+      const matchCountByModel = {};
+      okIds.forEach(mid => { matchCountByModel[mid] = 0; });
+
+      clusterIds.forEach(cid => {
+        const labelByModel = {};
+        okIds.forEach(mid => {
+          const c = resultsByModel[mid].clusters.find(cc => Number(cc.cluster) === cid);
+          if (c) labelByModel[mid] = c.proposed_label;
+        });
+        const freq = {};
+        Object.values(labelByModel).forEach(l => { freq[l] = (freq[l] || 0) + 1; });
+        let majority = null, majCount = 0;
+        Object.entries(freq).forEach(([l, n]) => { if (n > majCount) { majority = l; majCount = n; } });
+        if (majCount >= 2) {
+          clustersWithAgreement++;
+          Object.entries(labelByModel).forEach(([mid, l]) => { if (l === majority) matchCountByModel[mid]++; });
+        }
+      });
+
+      const benchRows = okIds.map(mid => ({
+        mid, size: modelSizeLabel(mid),
+        nClusters: resultsByModel[mid].clusters.length,
+        matches: matchCountByModel[mid],
+      })).sort((a, b) => b.matches - a.matches);
+
+      const benchHtml = `<table class="crosstab mm-bench"><thead><tr>
+          <th>모델</th><th>크기</th><th>라벨링 성공</th><th>다수 의견과 일치한 군집 수</th>
+        </tr></thead><tbody>${benchRows.map(r => `
+          <tr><td>${esc(shortModelName(r.mid))}</td><td>${esc(r.size)}</td><td>${r.nClusters}/${clusterIds.length}</td>
+          <td>${r.matches}/${clusterIds.length}</td></tr>`).join("")}</tbody></table>`;
+
+      const agreementPct = Math.round((clustersWithAgreement / clusterIds.length) * 100);
+      const best = benchRows[0];
+      const worst = benchRows[benchRows.length - 1];
+      const summaryHtml = `<div class="compare-note" style="margin-top:10px;">
+          군집 ${clusterIds.length}개 중 <b>${clustersWithAgreement}개(${agreementPct}%)</b>에서 2개 이상 모델이 같은 라벨에 동의했고, 나머지는 모델마다 의견이 갈렸습니다.
+          ${best ? ` 가장 자주 다수 의견과 일치한 모델은 <b>${esc(shortModelName(best.mid))}</b>(${best.matches}/${clusterIds.length}개 군집)였고,` : ""}
+          ${worst && worst.mid !== (best && best.mid) ? ` 가장 자주 갈린 모델은 <b>${esc(shortModelName(worst.mid))}</b>(${worst.matches}/${clusterIds.length}개 군집)였습니다.` : ""}
+          다만 각 모델을 1회씩만 실행한 결과라, 지금의 불일치가 모델 간 실제 견해 차이인지 생성 과정의 무작위성(temperature) 때문인지는 같은 모델을 여러 번 재실행해봐야 확실해집니다.
+        </div>`;
+
+      el.innerHTML = `<div class="mm-subhead" style="margin-top:0;">종합 분석</div>${benchHtml}${summaryHtml}`;
+    }
 
     function renderModelStatusCards(resultsByModel, order) {
       return `<div class="mm-cards">` + order.map(mid => {
@@ -2173,22 +2537,30 @@
     function renderLabelByModel(resultsByModel, order) {
       const modelIds = order.filter(mid => resultsByModel[mid] && resultsByModel[mid].ok);
       if (!modelIds.length) return "";
+      // 순수 라벨명으로만 묶으면(예: countBy(rows, r => r.proposed_label)) 한
+      // 모델이 서로 다른 두 군집에 같은 라벨을 붙였을 때 그 모델 열에 0이 아닌
+      // 행이 5개보다 적게 나와서 "일부 군집이 빠졌다"는 오해를 산다. 크로스탭과
+      // 똑같이 clusterLabelKey("군집 N: 라벨")로 묶어서 모델마다 항상 군집 수(5개)
+      // 만큼 0이 아닌 행이 나오게 한다.
       const countsByModel = {};
-      modelIds.forEach(mid => { countsByModel[mid] = countBy(resultsByModel[mid].rows, r => r.proposed_label); });
-      const allLabels = [...new Set(modelIds.flatMap(mid => Object.keys(countsByModel[mid])))];
-      const totals = {};
-      allLabels.forEach(l => { totals[l] = modelIds.reduce((s, mid) => s + (countsByModel[mid][l] || 0), 0); });
-      const sortedLabels = allLabels.sort((a, b) => totals[b] - totals[a]);
+      modelIds.forEach(mid => { countsByModel[mid] = countBy(resultsByModel[mid].rows, clusterLabelKey); });
+      const allKeys = [...new Set(modelIds.flatMap(mid => Object.keys(countsByModel[mid])))];
+      const clusterNumOf = (key) => { const m = /^군집 (\d+):/.exec(key); return m ? Number(m[1]) : null; };
+      const sortedKeys = allKeys.sort((a, b) => {
+        const na = clusterNumOf(a), nb = clusterNumOf(b);
+        if (na !== nb) return na - nb;
+        return a.localeCompare(b);
+      });
       const globalMax = Math.max(1, ...modelIds.flatMap(mid => Object.values(countsByModel[mid])));
-      const rowsHtml = sortedLabels.map(label => {
+      const rowsHtml = sortedKeys.map(key => {
         const cells = modelIds.map(mid => {
-          const n = countsByModel[mid][label] || 0;
+          const n = countsByModel[mid][key] || 0;
           return `<td><span class="mm-bar-track"><span class="mm-bar" style="width:${(n / globalMax) * 100}%"></span></span><span class="mm-bar-n">${n}</span></td>`;
         }).join("");
-        return `<tr><th title="${esc(label)}">${esc(label)}</th>${cells}</tr>`;
+        return `<tr><th title="${esc(key)}">${esc(key)}</th>${cells}</tr>`;
       }).join("");
       const headCols = modelIds.map(mid => `<th title="${esc(mid)}">${esc(shortModelName(mid))}</th>`).join("");
-      return `<div class="mm-subhead">모델별 818건 라벨 분포 비교 (막대는 모델 간 동일 스케일)</div>
+      return `<div class="mm-subhead">모델별 818건 라벨 분포 비교 (행: 군집·라벨, 막대는 모델 간 동일 스케일)</div>
         <div class="crosstab-wrap"><table class="crosstab mm-labeldist"><thead><tr><th></th>${headCols}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
     }
 
@@ -2202,7 +2574,7 @@
         + modelIds.map(mid => `
           <div class="mm-model-crosstab">
             <div class="mm-model-crosstab-name">${esc(shortModelName(mid))}</div>
-            ${crosstabHtml(resultsByModel[mid].rows, r => r.original_category, r => r.proposed_label)}
+            ${crosstabHtml(resultsByModel[mid].rows, r => r.original_category, clusterLabelKey)}
           </div>`).join("");
     }
 
@@ -2243,6 +2615,256 @@
       const csv = [header.join(",")].concat(rows.map(r => header.map(h => csvEsc(r[h])).join(","))).join("\n");
       const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
       return URL.createObjectURL(blob);
+    }
+
+    // 모델별 818건 라벨 사용량을 그룹 막대로 비교한다(순수 라벨 기준 — 어느
+    // 군집에서 왔는지는 접고, "이 모델이 이 라벨을 몇 건에 붙였는지"만 본다).
+    // 표(라벨 분포 비교)로도 같은 정보가 있지만, 막대 길이로 바로 비교되는
+    // 그림 형태를 따로 원해서 추가했다.
+    function renderMultiModelDiffChart(resultsByModel, order) {
+      const el = document.getElementById("mm-diff-chart");
+      if (!el) return;
+      const okIds = order.filter(mid => resultsByModel[mid] && resultsByModel[mid].ok);
+      if (okIds.length < 2) { el.innerHTML = ""; return; }
+
+      const countsByModel = {};
+      okIds.forEach(mid => { countsByModel[mid] = countBy(resultsByModel[mid].rows, r => r.proposed_label); });
+      const allLabels = [...new Set(okIds.flatMap(mid => Object.keys(countsByModel[mid])))];
+      const totals = {};
+      allLabels.forEach(l => { totals[l] = okIds.reduce((s, mid) => s + (countsByModel[mid][l] || 0), 0); });
+      const labels = allLabels.sort((a, b) => totals[b] - totals[a]);
+
+      const colorOf = buildColorMap(okIds);
+      const maxVal = Math.max(1, ...labels.flatMap(l => okIds.map(mid => countsByModel[mid][l] || 0)));
+
+      const W = 900, rowH = 15, barGap = 2, groupGap = 12;
+      const padL = 200, padR = 46, padT = 8, padB = 4;
+      const groupH = okIds.length * rowH + (okIds.length - 1) * barGap;
+      const H = padT + labels.length * (groupH + groupGap) + padB;
+      const plotW = W - padL - padR;
+      const sxVal = v => (v / maxVal) * plotW;
+
+      // 라벨 하나에 대응하는 모델 수(=보이는 막대 수)가 라벨마다 다르다 보니
+      // (어떤 라벨은 4개 모델 다 쓰고, 어떤 라벨은 1개만 쓴다) 그냥 막대만
+      // 그리면 그룹 경계가 흐려 보인다 — 그룹마다 옅은 줄무늬 배경 + 아래쪽
+      // 구분선을 깔아서 "여기부터 여기까지가 이 라벨"이 눈에 보이게 한다.
+      let bands = "", bars = "";
+      const bandPadX = 6;
+      labels.forEach((label, li) => {
+        const yBase = padT + li * (groupH + groupGap);
+        const bandY = yBase - groupGap / 2;
+        const bandH = groupH + groupGap;
+        if (li % 2 === 1) {
+          bands += `<rect x="0" y="${bandY.toFixed(1)}" width="${W}" height="${bandH.toFixed(1)}" fill="var(--paper-50)"></rect>`;
+        }
+        bands += `<line x1="${bandPadX}" x2="${W - bandPadX}" y1="${(bandY + bandH).toFixed(1)}" y2="${(bandY + bandH).toFixed(1)}" stroke="var(--line)" stroke-width="1"></line>`;
+
+        bars += `<text x="${padL - 10}" y="${(yBase + groupH / 2 + 4).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700">${esc(label)}</text>`;
+        okIds.forEach((mid, mi) => {
+          const v = countsByModel[mid][label] || 0;
+          const y = yBase + mi * (rowH + barGap);
+          const w = Math.max(v > 0 ? 2 : 0, sxVal(v));
+          const tip = `${esc(shortModelName(mid))}<br>${esc(label)}: ${v}건`;
+          bars += `<g data-tip="${esc(tip)}" tabindex="0">
+            <rect x="${padL}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${rowH - 1}" fill="${colorOf[mid]}" rx="2"></rect>
+            ${v > 0 ? `<text x="${(padL + w + 4).toFixed(1)}" y="${(y + rowH - 3).toFixed(1)}" font-size="10">${v}</text>` : ""}
+          </g>`;
+        });
+      });
+      bars = bands + bars;
+
+      const legend = okIds.map(mid => `<span class="mm-legend-item"><span class="sw" style="background:${colorOf[mid]}"></span>${esc(shortModelName(mid))}</span>`).join("");
+
+      el.innerHTML = `<div class="mm-subhead" style="margin-top:0;">모델별 라벨 사용 비교 (818건 기준, 라벨별 합계)</div>
+        <div class="mm-legend-row">${legend}</div>
+        <svg viewBox="0 0 ${W} ${H}" class="mm-diff-svg">${bars}</svg>
+        <div class="compare-note">같은 라벨이라도 모델마다 몇 건에 붙였는지를 막대 길이로 비교합니다. 막대가 없으면 그 모델은 해당 라벨을 전혀 쓰지 않았다는 뜻입니다.</div>`;
+    }
+
+    // 군집별 표로는 "누가 누구와 일치했는지"를 한 번에 보기 어려워서, 모델
+    // 쌍(pair)마다 5개 군집 중 몇 개에서 같은 라벨을 냈는지 4x4 표로 집계한다
+    // — "이 두 모델은 서로 잘 맞는 편인가"를 바로 알 수 있다.
+    function renderPairwiseAgreementHeatmap(resultsByModel, order) {
+      const el = document.getElementById("mm-pairwise");
+      if (!el) return;
+      const okIds = order.filter(mid => resultsByModel[mid] && resultsByModel[mid].ok);
+      if (okIds.length < 2) { el.innerHTML = ""; return; }
+
+      const clusterIds = [...new Set(DATA.step3.scatter.points.map(p => p.cluster))].sort((a, b) => a - b);
+      const labelOf = (mid, cid) => {
+        const c = resultsByModel[mid].clusters.find(cc => Number(cc.cluster) === cid);
+        return c ? c.proposed_label : null;
+      };
+      const maxN = clusterIds.length;
+
+      const headCols = okIds.map(mid => `<th title="${esc(mid)}">${esc(shortModelName(mid))}</th>`).join("");
+      const rowsHtml = okIds.map(midA => {
+        const cells = okIds.map(midB => {
+          if (midA === midB) return `<td class="self">${maxN}/${maxN}</td>`;
+          let n = 0;
+          clusterIds.forEach(cid => { if (labelOf(midA, cid) === labelOf(midB, cid)) n++; });
+          const alpha = 0.1 + (n / maxN) * 0.75;
+          const bg = `color-mix(in srgb, var(--sea-600) ${Math.round(alpha * 100)}%, transparent)`;
+          return `<td style="background:${bg}" title="${esc(shortModelName(midA))} ↔ ${esc(shortModelName(midB))}: ${n}/${maxN} 군집 일치">${n}/${maxN}</td>`;
+        }).join("");
+        return `<tr><th title="${esc(midA)}">${esc(shortModelName(midA))}</th>${cells}</tr>`;
+      }).join("");
+
+      el.innerHTML = `<div class="mm-subhead">모델 쌍(pair)별 일치도 — 5개 군집 중 몇 개에서 같은 라벨을 냈는가</div>
+        <div class="crosstab-wrap"><table class="crosstab mm-pairwise"><thead><tr><th></th>${headCols}</tr></thead><tbody>${rowsHtml}</tbody></table></div>
+        <div class="compare-note">색이 진할수록 그 두 모델이 서로 자주 같은 라벨을 냈다는 뜻입니다. 대각선(자기 자신)은 항상 ${maxN}/${maxN}입니다.</div>`;
+    }
+
+    // 결과 카드/표/분석을 한 번에 다시 그린다 — 방금 실행한 결과든, 저장된
+    // 기록을 불러온 결과든 같은 모양으로 보여야 하니 하나로 합쳐 둔다.
+    function renderAllMultiModelViews(resultsByModel, order) {
+      mmResultsEl.innerHTML = renderModelStatusCards(resultsByModel, order)
+        + renderClusterAgreement(resultsByModel, order)
+        + renderLabelByModel(resultsByModel, order)
+        + renderPerModelCrosstabs(resultsByModel, order);
+      renderMultiModelAnalysis(resultsByModel, order);
+      renderMultiModelDiffChart(resultsByModel, order);
+      renderPairwiseAgreementHeatmap(resultsByModel, order);
+    }
+
+    // ---- 이전 기록: 서버에 저장된 실행을 다시 돌리지 않고 불러와서 본다 ----
+    const mmHistoryListEl = document.getElementById("mm-history-list");
+    const mmHistoryToggleBtn = document.getElementById("mm-history-toggle-btn");
+    const mmHistoryCountEl = document.getElementById("mm-history-count");
+    let mmHistoryRuns = [];
+    let mmHistoryActiveId = null;
+
+    // 100건까지 쌓일 걸 대비해 <select> 대신 스크롤되는 목록으로 보여준다 —
+    // 행을 클릭하면 바로 그 기록을 불러온다(따로 "불러오기" 버튼 없이).
+    async function loadMultiModelHistory() {
+      if (!mmHistoryListEl) return;
+      try {
+        const res = await fetch("api_list_multimodel_runs.php");
+        const data = await res.json();
+        mmHistoryRuns = (data.ok && data.runs) ? data.runs : [];
+        if (mmHistoryCountEl) mmHistoryCountEl.textContent = `${mmHistoryRuns.length}건`;
+        renderMultiModelHistoryList();
+      } catch (err) {
+        mmHistoryRuns = [];
+        if (mmHistoryCountEl) mmHistoryCountEl.textContent = "0건";
+        mmHistoryListEl.innerHTML = `<div class="mm-history-empty">기록을 불러오지 못했습니다.</div>`;
+      }
+    }
+
+    function renderMultiModelHistoryList() {
+      if (!mmHistoryListEl) return;
+      if (!mmHistoryRuns.length) {
+        mmHistoryListEl.innerHTML = `<div class="mm-history-empty">아직 저장된 기록이 없습니다.</div>`;
+        return;
+      }
+      mmHistoryListEl.innerHTML = mmHistoryRuns.map(r => {
+        const okCount = r.models.filter(m => m.ok).length;
+        const activeCls = r.id === mmHistoryActiveId ? " active" : "";
+        return `<div class="mm-history-item${activeCls}" data-run-id="${esc(r.id)}" tabindex="0" role="button">
+          <span>${esc(r.saved_at)}</span>
+          <span class="mhi-badge">${okCount}/${r.models.length}개 성공</span>
+        </div>`;
+      }).join("");
+    }
+
+    async function loadRunById(id) {
+      mmStatusEl.classList.remove("err");
+      mmStatusEl.textContent = "저장된 기록 불러오는 중…";
+      try {
+        const res = await fetch("api_list_multimodel_runs.php?id=" + encodeURIComponent(id));
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "기록을 불러오지 못했습니다.");
+        const order = data.run.results.map(r => r.model);
+        const resultsByModel = {};
+        data.run.results.forEach(r => {
+          if (r.ok) {
+            const { rows } = joinClusterLabelsToDocs(r.clusters);
+            resultsByModel[r.model] = { ok: true, clusters: r.clusters, rows };
+          } else {
+            resultsByModel[r.model] = { ok: false, error: r.error };
+          }
+        });
+        renderAllMultiModelViews(resultsByModel, order);
+        const doneCount = Object.values(resultsByModel).filter(r => r.ok).length;
+        mmStatusEl.textContent = `${data.run.saved_at} 기록 — ${doneCount}/${order.length}개 모델 라벨링 성공. 아직 사람 검증 전 초안입니다.`;
+        if (doneCount > 0) {
+          const url = downloadMultiModelCsvUrl(resultsByModel, order);
+          mmResultsEl.innerHTML += `<div class="llm-apply-row" style="margin-top:14px;"><a class="llm-download-link" href="${url}" download="step4_local_multimodel_labels.csv">CSV 다운로드 (모델별 라벨 비교, ${doneCount}개 모델)</a></div>`;
+        }
+        mmHistoryActiveId = id;
+        renderMultiModelHistoryList();
+      } catch (err) {
+        mmStatusEl.classList.add("err");
+        mmStatusEl.textContent = "실패: " + err.message;
+      }
+    }
+
+    if (mmHistoryListEl) {
+      mmHistoryListEl.addEventListener("click", (e) => {
+        const item = e.target.closest("[data-run-id]");
+        if (item) loadRunById(item.getAttribute("data-run-id"));
+      });
+      mmHistoryListEl.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        const item = e.target.closest("[data-run-id]");
+        if (item) { e.preventDefault(); loadRunById(item.getAttribute("data-run-id")); }
+      });
+    }
+    if (mmHistoryToggleBtn) {
+      mmHistoryToggleBtn.addEventListener("click", () => {
+        const isOpen = mmHistoryListEl.style.display !== "none";
+        mmHistoryListEl.style.display = isOpen ? "none" : "block";
+        mmHistoryToggleBtn.textContent = isOpen ? "목록 보기" : "목록 숨기기";
+      });
+    }
+    loadMultiModelHistory();
+
+    // ---- 여러 번 실행한 기록 종합 — 모델·군집마다 최빈 라벨과 비율 ----
+    function renderStabilityReport(data) {
+      const el = document.getElementById("mm-stability-results");
+      if (!el) return;
+      if (!data.n_runs) {
+        el.innerHTML = `<div class="card-note">아직 저장된 기록이 없습니다. "전체 모델 비교 실행"을 몇 번 더 돌리면 여기 쌓입니다.</div>`;
+        return;
+      }
+      const models = data.models, clusters = data.clusters;
+      const headCols = models.map(mid => `<th title="${esc(mid)}">${esc(shortModelName(mid))}</th>`).join("");
+      const rowsHtml = clusters.map(cid => {
+        const cells = models.map(mid => {
+          const byCluster = data.stats[mid];
+          const s = byCluster ? byCluster[cid] : null;
+          if (!s) return `<td>—</td>`;
+          const pct = Math.round((s.count / s.total) * 100);
+          const cls = pct >= 70 ? "stab-high" : pct >= 40 ? "stab-mid" : "stab-low";
+          return `<td class="${cls}" title="${esc(s.mode)}: ${s.count}/${s.total}회">${esc(s.mode)}<span class="stab-pct">${s.count}/${s.total}회 (${pct}%)</span></td>`;
+        }).join("");
+        return `<tr><th>군집 ${esc(cid)}</th>${cells}</tr>`;
+      }).join("");
+      el.innerHTML = `<div class="compare-note" style="margin-bottom:8px;">저장된 기록 ${data.n_runs}개를 모았습니다(모델별로 성공한 실행만 집계).</div>
+        <div class="crosstab-wrap"><table class="crosstab mm-stability"><thead><tr><th></th>${headCols}</tr></thead><tbody>${rowsHtml}</tbody></table></div>
+        <div class="compare-note">칸 안 큰 글자는 가장 많이 나온 라벨(최빈값), 아래 작은 글자는 전체 실행 중 그 라벨이 나온 비율입니다. 초록 70% 이상(안정적) · 노랑 40~70% · 빨강 40% 미만(그때그때 다름). 실행 횟수가 적으면(1~2회) 비율이 크게 흔들릴 수 있으니 참고용으로만 보세요.</div>`;
+    }
+
+    const mmStabilityBtn = document.getElementById("mm-stability-btn");
+    const mmStabilityStatusEl = document.getElementById("mm-stability-status");
+    if (mmStabilityBtn) {
+      mmStabilityBtn.addEventListener("click", async () => {
+        mmStabilityBtn.disabled = true;
+        mmStabilityStatusEl.classList.remove("err");
+        mmStabilityStatusEl.textContent = "저장된 기록 불러와 집계하는 중…";
+        try {
+          const res = await fetch("api_multimodel_stability.php");
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "집계 실패");
+          renderStabilityReport(data);
+          mmStabilityStatusEl.textContent = `완료 — 기록 ${data.n_runs}개 집계함.`;
+        } catch (err) {
+          mmStabilityStatusEl.classList.add("err");
+          mmStabilityStatusEl.textContent = "실패: " + err.message;
+        } finally {
+          mmStabilityBtn.disabled = false;
+        }
+      });
     }
 
     if (mmRunBtn) {
@@ -2292,10 +2914,7 @@
               if (err.name === "AbortError") { mmAborted = true; break; }
               resultsByModel[mid] = { ok: false, error: err.message };
             }
-            mmResultsEl.innerHTML = renderModelStatusCards(resultsByModel, modelIds)
-              + renderClusterAgreement(resultsByModel, modelIds)
-              + renderLabelByModel(resultsByModel, modelIds)
-              + renderPerModelCrosstabs(resultsByModel, modelIds);
+            renderAllMultiModelViews(resultsByModel, modelIds);
           }
 
           const doneCount = Object.values(resultsByModel).filter(r => r.ok).length;
@@ -2306,6 +2925,16 @@
           if (doneCount > 0) {
             const url = downloadMultiModelCsvUrl(resultsByModel, modelIds);
             mmResultsEl.innerHTML += `<div class="llm-apply-row" style="margin-top:14px;"><a class="llm-download-link" href="${url}" download="step4_local_multimodel_labels.csv">CSV 다운로드 (모델별 라벨 비교, ${doneCount}개 모델)</a></div>`;
+
+            // 다시 안 돌려도 되게 서버에 기록을 남기고, "이전 기록" 목록을 갱신한다.
+            const saveResults = modelIds.map(mid => {
+              const r = resultsByModel[mid];
+              return r && r.ok ? { model: mid, ok: true, clusters: r.clusters } : { model: mid, ok: false, error: (r && r.error) || "미완료" };
+            });
+            fetch("api_save_multimodel_run.php", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ results: saveResults }),
+            }).then(() => loadMultiModelHistory()).catch(() => {});
           }
         } catch (err) {
           mmStatusEl.classList.add("err");
