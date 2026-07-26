@@ -14,7 +14,11 @@ namespace LlmCommon;
 
 const STEP3_OUT = __DIR__ . "/../step_3_process/output";
 const STEP1_JSONL = __DIR__ . "/../step_2_process/from_step1/step1_dataset.jsonl";
-const SAMPLES_PER_CLUSTER = 3;
+// Neyman 최적 배분(Cochran, 1977, Sampling Techniques §5.5)으로 계산한 군집별 표본 수.
+// n_h = n * (N_h*S_h) / sum(N_h*S_h), S_h는 STEP2 ko-sroberta-sts 임베딩에서 군집 중심까지의
+// 코사인 거리 표준편차(군집 내부 이질성). 재군집화(K 변경) 시 이 값도 다시 계산해야 한다.
+const SAMPLES_PER_CLUSTER = [0 => 8, 1 => 10, 2 => 5, 3 => 15, 4 => 3];
+const SAMPLES_PER_CLUSTER_DEFAULT = 5; // 카탈로그에 없는 군집 id 대비 폴백
 const SAMPLE_TEXT_MAXLEN = 300; // 문자 단위 자르기(토큰 비용/생성 시간 절약)
 const KEYWORDS_PER_CLUSTER = 8;
 const CANDIDATE_LABELS = "경계소홀, 정비불량/기기결함, 화재/폭발, 인적과실(조선부주의), 기상/환경요인, "
@@ -101,15 +105,17 @@ function build_cluster_blocks(): ?array {
     $keywordsByCluster = load_keywords();
 
     $sampleIds = [];
-    foreach ($byCluster as $ids) {
-        foreach (array_slice($ids, 0, SAMPLES_PER_CLUSTER) as $id) $sampleIds[] = $id;
+    foreach ($byCluster as $c => $ids) {
+        $n = SAMPLES_PER_CLUSTER[$c] ?? SAMPLES_PER_CLUSTER_DEFAULT;
+        foreach (array_slice($ids, 0, $n) as $id) $sampleIds[] = $id;
     }
     $textsById = load_texts_by_id($sampleIds);
 
     $clusterBlocks = [];
     foreach ($byCluster as $c => $ids) {
+        $n = SAMPLES_PER_CLUSTER[$c] ?? SAMPLES_PER_CLUSTER_DEFAULT;
         $samples = [];
-        foreach (array_slice($ids, 0, SAMPLES_PER_CLUSTER) as $id) {
+        foreach (array_slice($ids, 0, $n) as $id) {
             if (!empty($textsById[$id])) $samples[] = utf8_head($textsById[$id], SAMPLE_TEXT_MAXLEN);
         }
         $clusterBlocks[] = [
