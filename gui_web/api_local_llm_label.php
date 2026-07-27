@@ -6,8 +6,11 @@
  * lib_llm_common.php를 그대로 공유하고, 호출 대상만 로컬 서버로 바뀐다.
  * 로컬 서버는 API 키가 필요 없다 — 요청 바디의 endpoint로 어디를 부를지만 받는다.
  *
- * 입력(JSON 바디): {"endpoint": "http://localhost:8500/v1/chat/completions", "model": "Qwen/Qwen2.5-3B-Instruct"}
+ * 입력(JSON 바디): {"endpoint": "http://localhost:8500/v1/chat/completions", "model": "Qwen/Qwen2.5-3B-Instruct",
+ *                  "samples_per_cluster": {"0": 8, "1": 10, ...}}
  *                 model은 선택 — 생략하면 로컬 서버의 카탈로그 첫 번째 모델이 쓰인다.
+ *                 samples_per_cluster도 선택 — 웹 UI에서 군집별 표본 수를 직접 지정할 때 쓰고,
+ *                 생략하면 lib_llm_common.php의 기본 SAMPLES_PER_CLUSTER를 쓴다.
  *                 "전체 모델 비교 실행"은 이 엔드포인트를 모델별로 반복 호출한다.
  * 출력: api_llm_label.php와 동일한 형식(+ 실제 사용된 모델명이 "model" 필드에 반영됨)
  */
@@ -36,8 +39,9 @@ if (!parse_url($endpoint) || !preg_match('#^https?://#', $endpoint)) {
     exit;
 }
 $model = trim((string)($body["model"] ?? ""));
+$samplesOverride = \LlmCommon\sanitize_samples_override($body["samples_per_cluster"] ?? null);
 
-$clusterBlocks = \LlmCommon\build_cluster_blocks();
+$clusterBlocks = \LlmCommon\build_cluster_blocks($samplesOverride);
 if ($clusterBlocks === null) {
     http_response_code(500);
     echo json_encode(["ok" => false, "error" => "STEP3 산출물(clusters.csv)을 찾을 수 없습니다. kmeans를 먼저 실행하세요."]);
@@ -111,4 +115,5 @@ echo json_encode([
     "ok" => true,
     "model" => $respData["model"] ?? "local",
     "clusters" => $clusters,
+    "config_version" => \LlmCommon\config_version_key($samplesOverride),
 ], JSON_UNESCAPED_UNICODE);

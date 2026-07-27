@@ -9,7 +9,11 @@
  * SAMPLES_PER_CLUSTER 등 그라운딩 설정이 바뀌면 자동으로 다른 폴더에 쌓여서,
  * 서로 다른 프롬프트로 만든 기록이 섞이지 않는다.
  *
- * 입력(JSON 바디): {"results": [{"model":..., "ok":bool, "clusters":[...], "error":...}, ...]}
+ * 입력(JSON 바디): {"results": [{"model":..., "ok":bool, "clusters":[...], "error":...}, ...],
+ *                  "samples_per_cluster": {"0": 8, "1": 10, ...}}
+ *                 samples_per_cluster는 선택 — 그 실행에 실제로 쓰인 군집별 표본 수를 그대로
+ *                 넘겨야 config_version_key()가 label 호출 때와 같은 폴더로 계산된다(웹 UI에서
+ *                 직접 지정한 경우 label 요청 때 쓴 값을 그대로 여기에도 실어 보내야 함).
  * 출력: {"ok": true, "id": "20260125-091500", "config_version": "s8-10-5-15-3_a2f99347"}
  */
 
@@ -34,8 +38,9 @@ if (!is_array($results) || !$results) {
     exit;
 }
 
-$configVersion = \LlmCommon\config_version_key();
-$runsDir = \LlmCommon\runs_dir_for_current_config(); // 폴더 없으면 여기서 생성
+$samplesOverride = \LlmCommon\sanitize_samples_override($body["samples_per_cluster"] ?? null);
+$configVersion = \LlmCommon\config_version_key($samplesOverride);
+$runsDir = \LlmCommon\runs_dir_for_config($samplesOverride); // 폴더 없으면 여기서 생성
 $RUNS_FILE = $runsDir . "/multimodel_runs.jsonl";
 
 $id = date("Ymd-His");
@@ -43,7 +48,7 @@ $record = [
     "id" => $id,
     "saved_at" => date("c"),
     "config_version" => $configVersion,
-    "samples_per_cluster" => \LlmCommon\SAMPLES_PER_CLUSTER,
+    "samples_per_cluster" => $samplesOverride ?? \LlmCommon\SAMPLES_PER_CLUSTER,
     "results" => $results,
 ];
 

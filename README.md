@@ -67,7 +67,7 @@ cp config/config.php.example config/config.php
 - **STEP 3 (K-Means 군집화)**: 채택된 임베딩으로 Elbow(WCSS)와 Silhouette 두 지표를 K=2~30까지 병행 탐색하고(불일치 시 Silhouette 우선) K=5를 채택했다. 군집별로 "군집 내 출현 비중 ÷ 전체 코퍼스 내 출현 비중"으로 계산한 특징 키워드를 워드클라우드로 시각화한다.
 - **STEP 4 (LLM 구조화 라벨링)**: 군집별 특징 키워드·대표 문장을 프롬프트에 담아 OpenAI API 또는 로컬 LLM(Qwen2.5/Llama, DGX Spark)으로 사고원인 대분류를 제안받는다.
 
-### 군집 수(K) 선택의 타당성 검토
+### 군집 수(K) 선택의 타당성 검토 
 
 **1) K=5는 "만장일치"가 아니었다.** `step_3_process/output/k_selection.csv`를 보면 K=5(avg_silhouette=0.0473, Silhouette 최고점)와 K=8(avg_silhouette=0.0368, is_elbow=1)이 서로 불일치했고, "불일치 시 Silhouette 우선" 규칙(Layer.md:238)에 따라 K=5가 채택된 것이지 두 지표가 합의한 값이 아니다.
 
@@ -90,9 +90,9 @@ STEP4는 LLM 프롬프트에 군집마다 대표 문장 몇 건을 그라운딩 
 Neyman(1934)이 제시하고 Cochran의 표준 교재에 정리된 최적 배분 공식을 그대로 쓴다.
 
 ```
-        N_h · S_h
-n_h = n · ─────────────
-        Σ_h (N_h · S_h)
+             N_h · S_h
+n_h = n · ─────────────────
+            Σ_h (N_h · S_h)
 ```
 
 - `n` : 전체 표본 예산(5개 군집 합산)

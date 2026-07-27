@@ -98,22 +98,50 @@ function utf8_head(string $s, int $maxChars): string {
     return ($i < $len) ? $truncated . "…" : $truncated;
 }
 
-/** STEP3 산출물에서 군집별 {cluster, n_docs, keywords, sample_sentences} 블록을 만든다. 실패 시 null. */
-function build_cluster_blocks(): ?array {
+/**
+ * 요청에서 넘어온 군집별 표본 수 오버라이드를 정제한다. 실제 존재하는 군집
+ * id만 남기고, 값은 1~30 범위로 잘라낸다(0 이하는 의미가 없고, 30 초과는
+ * 프롬프트가 컨텍스트 한도에 가까워지는 걸 막기 위한 안전판 — README.md
+ * "군집별 표본 배분 계산"의 토큰 예산 역산 참고). 유효한 항목이 하나도
+ * 없으면 null을 반환해 호출자가 기본값(SAMPLES_PER_CLUSTER)을 쓰게 한다.
+ */
+function sanitize_samples_override($raw): ?array {
+    if (!is_array($raw) || !$raw) return null;
+    $validClusters = array_keys(load_cluster_ids());
+    $out = [];
+    foreach ($raw as $k => $v) {
+        $c = (int)$k;
+        if (!in_array($c, $validClusters, true)) continue;
+        $n = (int)$v;
+        if ($n < 1) $n = 1;
+        if ($n > 30) $n = 30;
+        $out[$c] = $n;
+    }
+    return $out ?: null;
+}
+
+/**
+ * STEP3 산출물에서 군집별 {cluster, n_docs, keywords, sample_sentences} 블록을 만든다.
+ * $samplesOverride를 주면 SAMPLES_PER_CLUSTER 상수 대신 그 값을 쓴다(웹 UI에서
+ * 군집별 표본 수를 직접 지정하는 경로용 — sanitize_samples_override()로 먼저
+ * 정제된 배열이어야 한다). 실패 시 null.
+ */
+function build_cluster_blocks(?array $samplesOverride = null): ?array {
     $byCluster = load_cluster_ids();
     if (!$byCluster) return null;
     $keywordsByCluster = load_keywords();
+    $samplesCfg = $samplesOverride ?? SAMPLES_PER_CLUSTER;
 
     $sampleIds = [];
     foreach ($byCluster as $c => $ids) {
-        $n = SAMPLES_PER_CLUSTER[$c] ?? SAMPLES_PER_CLUSTER_DEFAULT;
+        $n = $samplesCfg[$c] ?? SAMPLES_PER_CLUSTER_DEFAULT;
         foreach (array_slice($ids, 0, $n) as $id) $sampleIds[] = $id;
     }
     $textsById = load_texts_by_id($sampleIds);
 
     $clusterBlocks = [];
     foreach ($byCluster as $c => $ids) {
-        $n = SAMPLES_PER_CLUSTER[$c] ?? SAMPLES_PER_CLUSTER_DEFAULT;
+        $n = $samplesCfg[$c] ?? SAMPLES_PER_CLUSTER_DEFAULT;
         $samples = [];
         foreach (array_slice($ids, 0, $n) as $id) {
             if (!empty($textsById[$id])) $samples[] = utf8_head($textsById[$id], SAMPLE_TEXT_MAXLEN);
@@ -186,14 +214,18 @@ function parse_clusters_response(string $content): ?array {
 }
 
 /**
- * 현재 STEP4 그라운딩 설정(표본 배분·절단 길이·키워드 수·후보라벨)을 식별하는
+ * STEP4 그라운딩 설정(표본 배분·절단 길이·키워드 수·후보라벨)을 식별하는
  * 버전 키. 이 중 하나라도 바뀌면 키가 자동으로 달라져 실행 기록이 다른 폴더에
  * 쌓인다 — 서로 다른 프롬프트로 만들어진 기록이 안정성 통계(api_multimodel_stability.php)
  * 에서 섞이는 걸 막기 위함이다. 사람이 폴더명만 보고도 어떤 설정인지 알 수 있게
  * "s{군집별표본수}_{짧은해시}" 형태로 만든다(해시는 표본수 외 다른 값 변경도 감지).
+ *
+ * $samplesOverride를 주면(웹 UI에서 직접 지정한 값) 그 조합 전용 폴더가 생긴다 —
+ * 코드의 기본 SAMPLES_PER_CLUSTER와 별개로, 실제로 이 요청에 쓰인 표본 수를
+ * 기준으로 버전을 나눠야 실행 기록과 저장 폴더가 항상 일치하기 때문이다.
  */
-function config_version_key(): string {
-    $spc = SAMPLES_PER_CLUSTER;
+function config_version_key(?array $samplesOverride = null): string {
+    $spc = $samplesOverride ?? SAMPLES_PER_CLUSTER;
     ksort($spc);
     $sig = [
         "samples_per_cluster" => $spc,
@@ -206,9 +238,9 @@ function config_version_key(): string {
     return "s" . implode("-", $spc) . "_" . $hash;
 }
 
-/** config_version_key()에 대응하는 실행 기록 저장 디렉터리. 없으면 만든다. */
-function runs_dir_for_current_config(): string {
-    $dir = __DIR__ . "/../step_4_process/output/runs/" . config_version_key();
+/** config_version_key($samplesOverride)에 대응하는 실행 기록 저장 디렉터리. 없으면 만든다. */
+function runs_dir_for_config(?array $samplesOverride = null): string {
+    $dir = __DIR__ . "/../step_4_process/output/runs/" . config_version_key($samplesOverride);
     if (!is_dir($dir)) mkdir($dir, 0775, true);
     return $dir;
 }
