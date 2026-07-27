@@ -1,0 +1,92 @@
+<svg width="1000" height="400" viewBox="0 0 1000 400" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Neyman 배분(군집별 8/10/5/15/3건) 설정의 STEP4 모델별·군집별 라벨 재현성(100회 실행)</title>
+<desc>3개 모델(Qwen2.5-3B/14B, Llama-3.1-8B, 7B는 응답 지연으로 제외)을 군집별 특징도 기반 Neyman 최적 배분 표본으로 100회 실행한 결과. 군집0은 3개 모델 모두 100%로 완전히 안정됐지만, 14B는 군집1·2·3에서 40~70% 구간으로 떨어져 이전보다 불안정해진 조합도 있다.</desc>
+<rect width="1000" height="400" fill="#FFFFFF"/>
+<style>
+  text { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; fill: #1B2431; }
+  .hdr { fill: #F1EFE8; stroke: #5F5E5A; stroke-width: 0.75; }
+  .hdrtxt { font-size: 14px; font-weight: 700; text-anchor: middle; }
+  .lblcell { fill: #F1EFE8; stroke: #5F5E5A; stroke-width: 0.75; }
+  .lbltxt { font-size: 15px; font-weight: 700; text-anchor: middle; }
+  .cell-g { fill: #E2F0D9; stroke: #8FAE7E; stroke-width: 0.75; }
+  .cell-o { fill: #FBE5C8; stroke: #C99A55; stroke-width: 0.75; }
+  .label { font-size: 14.5px; font-weight: 700; text-anchor: middle; }
+  .label-g { fill: #2F5D34; }
+  .label-o { fill: #8A5A1C; }
+  .sub { font-size: 12px; text-anchor: middle; }
+  .sub-g { fill: #4C7A44; }
+  .sub-o { fill: #A6763A; }
+  .cap { font-size: 15px; text-anchor: middle; fill: #2C2C2A; }
+</style>
+
+<rect x="20" y="20" width="90" height="40" class="hdr"/>
+<text x="65" y="45" class="hdrtxt">군집</text>
+<rect x="110" y="20" width="290" height="40" class="hdr"/>
+<text x="255" y="45" class="hdrtxt">Qwen2.5-3B</text>
+<rect x="400" y="20" width="290" height="40" class="hdr"/>
+<text x="545" y="45" class="hdrtxt">Qwen2.5-14B</text>
+<rect x="690" y="20" width="290" height="40" class="hdr"/>
+<text x="835" y="45" class="hdrtxt">Llama-3.1-8B</text>
+
+<rect x="20" y="60" width="90" height="62" class="lblcell"/>
+<text x="65" y="97" class="lbltxt">군집 0</text>
+<rect x="110" y="60" width="290" height="62" class="cell-g"/>
+<text x="255" y="90" class="label label-g">인적과실(조선부주의)</text>
+<text x="255" y="108" class="sub sub-g">100/100회 (100%)</text>
+<rect x="400" y="60" width="290" height="62" class="cell-g"/>
+<text x="545" y="90" class="label label-g">기기결함</text>
+<text x="545" y="108" class="sub sub-g">100/100회 (100%)</text>
+<rect x="690" y="60" width="290" height="62" class="cell-g"/>
+<text x="835" y="90" class="label label-g">기상/환경요인</text>
+<text x="835" y="108" class="sub sub-g">100/100회 (100%)</text>
+
+<rect x="20" y="122" width="90" height="62" class="lblcell"/>
+<text x="65" y="159" class="lbltxt">군집 1</text>
+<rect x="110" y="122" width="290" height="62" class="cell-g"/>
+<text x="255" y="152" class="label label-g">기상/환경요인</text>
+<text x="255" y="170" class="sub sub-g">100/100회 (100%)</text>
+<rect x="400" y="122" width="290" height="62" class="cell-o"/>
+<text x="545" y="152" class="label label-o">인적과실</text>
+<text x="545" y="170" class="sub sub-o">53/100회 (53%)</text>
+<rect x="690" y="122" width="290" height="62" class="cell-g"/>
+<text x="835" y="152" class="label label-g">인적과실(조선부주의)</text>
+<text x="835" y="170" class="sub sub-g">94/100회 (94%)</text>
+
+<rect x="20" y="184" width="90" height="62" class="lblcell"/>
+<text x="65" y="221" class="lbltxt">군집 2</text>
+<rect x="110" y="184" width="290" height="62" class="cell-g"/>
+<text x="255" y="214" class="label label-g">정비불량/기기결함</text>
+<text x="255" y="232" class="sub sub-g">100/100회 (100%)</text>
+<rect x="400" y="184" width="290" height="62" class="cell-o"/>
+<text x="545" y="214" class="label label-o">하역/작업안전(인명사상)</text>
+<text x="545" y="232" class="sub sub-o">42/100회 (42%)</text>
+<rect x="690" y="184" width="290" height="62" class="cell-g"/>
+<text x="835" y="214" class="label label-g">하역/작업안전(인명사상)</text>
+<text x="835" y="232" class="sub sub-g">88/100회 (88%)</text>
+
+<rect x="20" y="246" width="90" height="62" class="lblcell"/>
+<text x="65" y="283" class="lbltxt">군집 3</text>
+<rect x="110" y="246" width="290" height="62" class="cell-g"/>
+<text x="255" y="276" class="label label-g">계류/정박사고</text>
+<text x="255" y="294" class="sub sub-g">97/100회 (97%)</text>
+<rect x="400" y="246" width="290" height="62" class="cell-o"/>
+<text x="545" y="276" class="label label-o">항법위반</text>
+<text x="545" y="294" class="sub sub-o">54/100회 (54%)</text>
+<rect x="690" y="246" width="290" height="62" class="cell-o"/>
+<text x="835" y="276" class="label label-o">항법위반</text>
+<text x="835" y="294" class="sub sub-o">54/100회 (54%)</text>
+
+<rect x="20" y="308" width="90" height="62" class="lblcell"/>
+<text x="65" y="345" class="lbltxt">군집 4</text>
+<rect x="110" y="308" width="290" height="62" class="cell-o"/>
+<text x="255" y="338" class="label label-o">항법위반</text>
+<text x="255" y="356" class="sub sub-o">69/100회 (69%)</text>
+<rect x="400" y="308" width="290" height="62" class="cell-g"/>
+<text x="545" y="338" class="label label-g">화재/폭발</text>
+<text x="545" y="356" class="sub sub-g">73/100회 (73%)</text>
+<rect x="690" y="308" width="290" height="62" class="cell-g"/>
+<text x="835" y="338" class="label label-g">화재/폭발</text>
+<text x="835" y="356" class="sub sub-g">100/100회 (100%)</text>
+
+<text x="500" y="386" class="cap">Fig. 7. Neyman 배분(군집별 8/10/5/15/3건) 설정 — 3모델(7B 제외) × 100회 재현성.</text>
+</svg>

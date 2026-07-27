@@ -671,6 +671,16 @@
   .mm-model-crosstab { margin-bottom: 22px; }
   .mm-model-crosstab-name { font-size: 12px; font-weight: 700; color: var(--sea-700); margin-bottom: 6px; }
   .mm-history-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--ink-700); }
+  .mm-version-select {
+    font-size: 12px; font-family: inherit; color: var(--ink-900); background: var(--paper-50);
+    border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px;
+  }
+  .mm-version-badge {
+    font-size: 11px; font-family: "SF Mono", Consolas, monospace; color: var(--ink-500);
+    background: var(--paper-50); border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px;
+  }
+  .mm-version-badge.current { color: var(--sea-700); border-color: var(--sea-300, var(--sea-600)); }
+  .mm-version-badge.legacy { color: var(--warn-fg, #9a6b12); }
   .mm-history-count {
     display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px;
     padding: 0 7px; border-radius: 999px; background: var(--sea-100); color: var(--sea-700);
@@ -1073,6 +1083,11 @@
       <div class="llm-btn-row">
         <button class="llm-run-btn" id="mm-run-btn" type="button">전체 모델 비교 실행</button>
         <button class="llm-cancel-btn" id="mm-cancel-btn" type="button" style="display:none">취소</button>
+      </div>
+      <div class="mm-history-row">
+        <label>설정 버전</label>
+        <select id="mm-version-select" class="mm-version-select"></select>
+        <span class="mm-version-badge" id="mm-version-badge"></span>
       </div>
       <div class="mm-history-row">
         <label>이전 기록</label>
@@ -2731,18 +2746,47 @@
     const mmHistoryListEl = document.getElementById("mm-history-list");
     const mmHistoryToggleBtn = document.getElementById("mm-history-toggle-btn");
     const mmHistoryCountEl = document.getElementById("mm-history-count");
+    const mmVersionSelectEl = document.getElementById("mm-version-select");
+    const mmVersionBadgeEl = document.getElementById("mm-version-badge");
     let mmHistoryRuns = [];
     let mmHistoryActiveId = null;
+    // 빈 문자열 = "현재 코드의 설정 버전"(서버가 기본값으로 골라줌). 드롭다운에서
+    // 과거 버전을 고르면 그 버전 폴더의 기록만 보게 된다 — SAMPLES_PER_CLUSTER 등이
+    // 바뀔 때마다 기록이 다른 폴더에 쌓이므로(config_version_key 참고), 서로 다른
+    // 프롬프트로 만든 기록이 안정성 분석에서 섞이지 않게 하려는 목적이다.
+    let mmSelectedVersion = "";
+
+    function renderVersionUI(data) {
+      if (mmVersionBadgeEl) {
+        const isCurrent = data.is_current_config !== false; // 현재 버전 조회 시 서버가 항상 true
+        mmVersionBadgeEl.textContent = isCurrent ? `현재 설정 · ${data.config_version}` : `과거 설정 · ${data.config_version}`;
+        mmVersionBadgeEl.className = "mm-version-badge " + (isCurrent ? "current" : "legacy");
+      }
+      if (mmVersionSelectEl && Array.isArray(data.versions)) {
+        const prev = mmVersionSelectEl.value;
+        mmVersionSelectEl.innerHTML = data.versions.map(v => {
+          const label = v.startsWith("legacy") ? `${v} (과거)` : v;
+          return `<option value="${esc(v)}">${esc(label)}</option>`;
+        }).join("");
+        // 항상 "현재 설정 버전"을 목록 맨 위에 보장(아직 한 번도 저장 안 했으면 versions에 없을 수 있음)
+        if (!data.versions.includes(data.config_version)) {
+          mmVersionSelectEl.insertAdjacentHTML("afterbegin", `<option value="${esc(data.config_version)}">${esc(data.config_version)} (현재, 아직 기록 없음)</option>`);
+        }
+        mmVersionSelectEl.value = prev && data.versions.includes(prev) ? prev : data.config_version;
+      }
+    }
 
     // 100건까지 쌓일 걸 대비해 <select> 대신 스크롤되는 목록으로 보여준다 —
     // 행을 클릭하면 바로 그 기록을 불러온다(따로 "불러오기" 버튼 없이).
     async function loadMultiModelHistory() {
       if (!mmHistoryListEl) return;
       try {
-        const res = await fetch("api_list_multimodel_runs.php");
+        const qs = mmSelectedVersion ? ("?version=" + encodeURIComponent(mmSelectedVersion)) : "";
+        const res = await fetch("api_list_multimodel_runs.php" + qs);
         const data = await res.json();
         mmHistoryRuns = (data.ok && data.runs) ? data.runs : [];
         if (mmHistoryCountEl) mmHistoryCountEl.textContent = `${mmHistoryRuns.length}건`;
+        if (data.ok) renderVersionUI(data);
         renderMultiModelHistoryList();
       } catch (err) {
         mmHistoryRuns = [];
@@ -2771,7 +2815,8 @@
       mmStatusEl.classList.remove("err");
       mmStatusEl.textContent = "저장된 기록 불러오는 중…";
       try {
-        const res = await fetch("api_list_multimodel_runs.php?id=" + encodeURIComponent(id));
+        const versionQs = mmSelectedVersion ? ("&version=" + encodeURIComponent(mmSelectedVersion)) : "";
+        const res = await fetch("api_list_multimodel_runs.php?id=" + encodeURIComponent(id) + versionQs);
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "기록을 불러오지 못했습니다.");
         const order = data.run.results.map(r => r.model);
@@ -2817,6 +2862,13 @@
         mmHistoryToggleBtn.textContent = isOpen ? "목록 보기" : "목록 숨기기";
       });
     }
+    if (mmVersionSelectEl) {
+      mmVersionSelectEl.addEventListener("change", () => {
+        mmSelectedVersion = mmVersionSelectEl.value;
+        mmHistoryActiveId = null;
+        loadMultiModelHistory();
+      });
+    }
     loadMultiModelHistory();
 
     // ---- 여러 번 실행한 기록 종합 — 모델·군집마다 최빈 라벨과 비율 ----
@@ -2853,11 +2905,12 @@
         mmStabilityStatusEl.classList.remove("err");
         mmStabilityStatusEl.textContent = "저장된 기록 불러와 집계하는 중…";
         try {
-          const res = await fetch("api_multimodel_stability.php");
+          const qs = mmSelectedVersion ? ("?version=" + encodeURIComponent(mmSelectedVersion)) : "";
+          const res = await fetch("api_multimodel_stability.php" + qs);
           const data = await res.json();
           if (!data.ok) throw new Error(data.error || "집계 실패");
           renderStabilityReport(data);
-          mmStabilityStatusEl.textContent = `완료 — 기록 ${data.n_runs}개 집계함.`;
+          mmStabilityStatusEl.textContent = `완료 — [${data.config_version}] 기록 ${data.n_runs}개 집계함.`;
         } catch (err) {
           mmStabilityStatusEl.classList.add("err");
           mmStabilityStatusEl.textContent = "실패: " + err.message;
@@ -2934,7 +2987,12 @@
             fetch("api_save_multimodel_run.php", {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ results: saveResults }),
-            }).then(() => loadMultiModelHistory()).catch(() => {});
+            }).then(() => {
+              // 새로 저장한 기록은 항상 "현재 설정 버전" 폴더에 들어가므로, 과거
+              // 버전을 보고 있었더라도 방금 실행한 결과가 보이도록 현재 버전으로 되돌린다.
+              mmSelectedVersion = "";
+              loadMultiModelHistory();
+            }).catch(() => {});
           }
         } catch (err) {
           mmStatusEl.classList.add("err");

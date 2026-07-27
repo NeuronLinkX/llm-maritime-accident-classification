@@ -185,6 +185,47 @@ function parse_clusters_response(string $content): ?array {
     return null;
 }
 
+/**
+ * 현재 STEP4 그라운딩 설정(표본 배분·절단 길이·키워드 수·후보라벨)을 식별하는
+ * 버전 키. 이 중 하나라도 바뀌면 키가 자동으로 달라져 실행 기록이 다른 폴더에
+ * 쌓인다 — 서로 다른 프롬프트로 만들어진 기록이 안정성 통계(api_multimodel_stability.php)
+ * 에서 섞이는 걸 막기 위함이다. 사람이 폴더명만 보고도 어떤 설정인지 알 수 있게
+ * "s{군집별표본수}_{짧은해시}" 형태로 만든다(해시는 표본수 외 다른 값 변경도 감지).
+ */
+function config_version_key(): string {
+    $spc = SAMPLES_PER_CLUSTER;
+    ksort($spc);
+    $sig = [
+        "samples_per_cluster" => $spc,
+        "samples_default" => SAMPLES_PER_CLUSTER_DEFAULT,
+        "sample_text_maxlen" => SAMPLE_TEXT_MAXLEN,
+        "keywords_per_cluster" => KEYWORDS_PER_CLUSTER,
+        "candidate_labels" => CANDIDATE_LABELS,
+    ];
+    $hash = substr(md5(json_encode($sig)), 0, 8);
+    return "s" . implode("-", $spc) . "_" . $hash;
+}
+
+/** config_version_key()에 대응하는 실행 기록 저장 디렉터리. 없으면 만든다. */
+function runs_dir_for_current_config(): string {
+    $dir = __DIR__ . "/../step_4_process/output/runs/" . config_version_key();
+    if (!is_dir($dir)) mkdir($dir, 0775, true);
+    return $dir;
+}
+
+/** step_4_process/output/runs/ 아래 존재하는 모든 버전 폴더 이름을 최신 순 없이 나열. */
+function list_config_versions(): array {
+    $base = __DIR__ . "/../step_4_process/output/runs";
+    if (!is_dir($base)) return [];
+    $versions = [];
+    foreach (scandir($base) as $name) {
+        if ($name === "." || $name === "..") continue;
+        if (is_dir($base . "/" . $name)) $versions[] = $name;
+    }
+    sort($versions, SORT_STRING);
+    return $versions;
+}
+
 /** chat-completions 엔드포인트 URL에서 "scheme://host[:port]"만 뽑아낸다(경로 제외). 실패 시 null. */
 function derive_local_base_url(string $chatEndpoint): ?string {
     $parts = parse_url($chatEndpoint);

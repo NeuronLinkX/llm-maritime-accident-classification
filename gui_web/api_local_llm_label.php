@@ -62,12 +62,18 @@ if ($model !== "") $payload["model"] = $model;
 // "모델 로드 대기"는 프런트엔드가 api_local_llm_health.php를 짧은 간격으로
 // 폴링해서 처리하고(report_template.html의 waitForLocalModelReady), 이 엔드포인트는
 // "이미 로드가 끝났다고 판단한 뒤"에만 호출된다는 전제로 생성 타임아웃만 넉넉히 둔다.
+//
+// 180초였을 때 Qwen2.5-7B-Instruct만 유독 자주 502로 실패했다 — 크기는 14B보다
+// 작은데도(14B는 실패한 적 없음) rationale을 "2문장 이내"로 요청해도 유독 길게
+// 쓰는 경향이 있어(실측 응답 길이가 3B/14B보다 김), temperature=0.2의 확률적
+// 변동과 겹치면 종종 180초를 넘겼다. 실측 소요시간 분포(33~102초)에 4배 이상
+// 여유를 두고 400초로 올린다.
 $streamContext = stream_context_create([
     "http" => [
         "method" => "POST",
         "header" => "Content-Type: application/json\r\n",
         "content" => json_encode($payload, JSON_UNESCAPED_UNICODE),
-        "timeout" => 180,
+        "timeout" => 400,
         "ignore_errors" => true,
     ],
 ]);
