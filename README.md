@@ -15,18 +15,15 @@ STEP 1~4 결과는 통합 웹 리포트(`gui_web/report.php`, 정적 스냅샷�
 
 ![Proposed Framework of This Study](step_proposed_framework.png)
 
-
 ### 전처리 과정
 
 ![Data Preprocessing of This Study](step_data_preprocessing.png)
 
 ![step_data_preprocessing_2](step_data_preprocessing_2.png)
 
-
 ### LLM을 통한 레이블링
 
 ![Generated image 1](step_llm_processing.png)
-
 
 ## 문서 안내
 
@@ -57,13 +54,16 @@ cp config/config.php.example config/config.php
 # 파이프라인 알고리즘 요약
 
 - **STEP 1 (전처리)**: 파일 내용을 직접 읽어 형식(HWP/HWPX/PDF)을 자동 판별한다. HWP·HWPX는 내부 구조를 직접 해석해 문단을 뽑고, PDF는 네이티브 텍스트를 우선 추출한 뒤 부족할 때만 OCR(PaddleOCR → OCRmyPDF 순으로 폴백)로 보완한다. 이후 문장 분리·정규화를 거쳐 "사건개요/일시/장소/사고경위" 4항목을 라벨 기반으로 추출한다(라벨이 없을 때의 대체 규칙 포함).
-- **STEP 2 (SBERT 임베딩 벤치마크)**: 사전학습된 한국어 SBERT 5종(ko-sroberta-nli/sts/multitask, KR-SBERT-V40K/Medium)을 추가 파인튜닝 없이 그대로 인코딩하고, 카테고리 내부/외부 평균 코사인 유사도 차이(intra-inter gap)로 정량 비교해 최적 모델을 선정한다.| 모델                            | intra 평균 | inter 평균 | gap              |
-  | ------------------------------- | ---------- | ---------- | ---------------- |
-  | ko-sroberta-sts (채택)          | 0.5853     | 0.5430     | **0.0422** |
-  | ko-sroberta-multitask           | 0.6121     | 0.5716     | 0.0404           |
-  | ko-sroberta-nli                 | 0.7075     | 0.6734     | 0.0341           |
-  | kr-sbert-medium-klueNLI-klueSTS | 0.6773     | 0.6555     | 0.0218           |
-  | kr-sbert-v40k-klueNLI-augSTS    | 0.6732     | 0.6517     | 0.0215           |
+- **STEP 2 (SBERT 임베딩 벤치마크)**: 사전학습된 한국어 SBERT 5종(ko-sroberta-nli/sts/multitask, KR-SBERT-V40K/Medium)을 추가 파인튜닝 없이 그대로 인코딩하고, 카테고리 내부/외부 평균 코사인 유사도 차이(intra-inter gap)로 정량 비교해 최적 모델을 선정한다. (5종 벤치마크 표는 아래 참고)
+
+| 모델                            | intra 평균 | inter 평균 | gap              |
+| ------------------------------- | ---------- | ---------- | ---------------- |
+| ko-sroberta-sts (채택)          | 0.5853     | 0.5430     | **0.0422** |
+| ko-sroberta-multitask           | 0.6121     | 0.5716     | 0.0404           |
+| ko-sroberta-nli                 | 0.7075     | 0.6734     | 0.0341           |
+| kr-sbert-medium-klueNLI-klueSTS | 0.6773     | 0.6555     | 0.0218           |
+| kr-sbert-v40k-klueNLI-augSTS    | 0.6732     | 0.6517     | 0.0215           |
+
 - **STEP 3 (K-Means 군집화)**: 채택된 임베딩으로 Elbow(WCSS)와 Silhouette 두 지표를 K=2~30까지 병행 탐색하고(불일치 시 Silhouette 우선) K=5를 채택했다. 군집별로 "군집 내 출현 비중 ÷ 전체 코퍼스 내 출현 비중"으로 계산한 특징 키워드를 워드클라우드로 시각화한다.
 - **STEP 4 (LLM 구조화 라벨링)**: 군집별 특징 키워드·대표 문장을 프롬프트에 담아 OpenAI API 또는 로컬 LLM(Qwen2.5/Llama, DGX Spark)으로 사고원인 대분류를 제안받는다.
 
