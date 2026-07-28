@@ -9,7 +9,12 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-VENV_PATH="${VENV_PATH:-$HOME/paddle_dev_test}"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    DEFAULT_VENV_PATH="$SCRIPT_DIR/step_1_process/paddle_env"
+else
+    DEFAULT_VENV_PATH="$HOME/paddle_dev_test"
+fi
+VENV_PATH="${VENV_PATH:-$DEFAULT_VENV_PATH}"
 # 실제 작업 스크립트는 step_1_process/ 안에 있다 — 이 파일은 step_1/(부모)
 # 에 있으므로 한 단계 더 들어가야 한다.
 WORKER="${WORKER:-$SCRIPT_DIR/step_1_process/step_1_run_decoder_data.sh}"

@@ -14,6 +14,7 @@ export PADDLE_OCR_MAX_PAGES="${PADDLE_OCR_MAX_PAGES:-2}"
 export USE_PADDLE_OCR="${USE_PADDLE_OCR:-auto}"
 export KEEP_PDF_DEBUG="${KEEP_PDF_DEBUG:-0}"
 export OCRMYPDF_TIMEOUT="${OCRMYPDF_TIMEOUT:-25}"
+export RETRY_FAILED_ONLY="${RETRY_FAILED_ONLY:-0}"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -195,6 +196,17 @@ trap cleanup EXIT
 
 FILES=()
 while IFS= read -r -d '' input_path; do
+    if [[ "$RETRY_FAILED_ONLY" == "1" ]]; then
+        retry_filename="$(basename "$input_path")"
+        retry_json="$OUTPUT_DIR/${retry_filename}.json"
+        # 비어 있거나, JSON이 깨졌거나, 정상 산출물의 핵심 키가 없는 파일만
+        # 실패 건으로 간주한다. stderr 로그는 성공 처리 중에도 생길 수 있어
+        # 실패 판정 기준으로 사용하지 않는다.
+        if [[ -s "$retry_json" ]] \
+            && jq -e '(.keyword_sentences | type) == "object"' "$retry_json" >/dev/null 2>&1; then
+            continue
+        fi
+    fi
     FILES+=("$input_path")
 done < <(
     find "$INPUT_DIR" -maxdepth 1 -type f \
@@ -209,6 +221,7 @@ kv "PDF OCR DPI (ocrmypdf)" "$OCR_DPI"
 kv "PDF_RENDER_DPI (paddle)" "$PDF_RENDER_DPI"
 kv "PADDLE_OCR_MAX_PAGES" "$PADDLE_OCR_MAX_PAGES"
 kv "USE_PADDLE_OCR" "$USE_PADDLE_OCR"
+kv "RETRY_FAILED_ONLY" "$RETRY_FAILED_ONLY"
 kv "KEEP_PDF_DEBUG" "$KEEP_PDF_DEBUG"
 kv "OCRMYPDF_TIMEOUT" "$OCRMYPDF_TIMEOUT"
 hr
