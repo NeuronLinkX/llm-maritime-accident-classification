@@ -15,6 +15,8 @@ export USE_PADDLE_OCR="${USE_PADDLE_OCR:-auto}"
 export KEEP_PDF_DEBUG="${KEEP_PDF_DEBUG:-0}"
 export OCRMYPDF_TIMEOUT="${OCRMYPDF_TIMEOUT:-25}"
 export RETRY_FAILED_ONLY="${RETRY_FAILED_ONLY:-0}"
+export RETRY_REVIEW_ONLY="${RETRY_REVIEW_ONLY:-0}"
+export OCR_MODE="${OCR_MODE:-auto}"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -196,14 +198,24 @@ trap cleanup EXIT
 
 FILES=()
 while IFS= read -r -d '' input_path; do
+    retry_filename="$(basename "$input_path")"
+    retry_json="$OUTPUT_DIR/${retry_filename}.json"
+
     if [[ "$RETRY_FAILED_ONLY" == "1" ]]; then
-        retry_filename="$(basename "$input_path")"
-        retry_json="$OUTPUT_DIR/${retry_filename}.json"
         # 비어 있거나, JSON이 깨졌거나, 정상 산출물의 핵심 키가 없는 파일만
         # 실패 건으로 간주한다. stderr 로그는 성공 처리 중에도 생길 수 있어
         # 실패 판정 기준으로 사용하지 않는다.
         if [[ -s "$retry_json" ]] \
             && jq -e '(.keyword_sentences | type) == "object"' "$retry_json" >/dev/null 2>&1; then
+            continue
+        fi
+    fi
+
+    if [[ "$RETRY_REVIEW_ONLY" == "1" ]]; then
+        # 유효한 기존 결과 중 품질 검사에서 needs_review=true로 판정된
+        # 문서만 다시 처리한다.
+        if [[ ! -s "$retry_json" ]] \
+            || ! jq -e '.needs_review == true' "$retry_json" >/dev/null 2>&1; then
             continue
         fi
     fi
@@ -215,13 +227,16 @@ done < <(
 )
 
 section "STEP 1 · body_decoder 통합 테스트"
-kv "입력 파일 수" "${#FILES[@]}"
+FILE_COUNT="${#FILES[@]}"
+kv "입력 파일 수" "$FILE_COUNT"
 kv "출력 디렉터리" "$OUTPUT_DIR"
 kv "PDF OCR DPI (ocrmypdf)" "$OCR_DPI"
 kv "PDF_RENDER_DPI (paddle)" "$PDF_RENDER_DPI"
 kv "PADDLE_OCR_MAX_PAGES" "$PADDLE_OCR_MAX_PAGES"
 kv "USE_PADDLE_OCR" "$USE_PADDLE_OCR"
 kv "RETRY_FAILED_ONLY" "$RETRY_FAILED_ONLY"
+kv "RETRY_REVIEW_ONLY" "$RETRY_REVIEW_ONLY"
+kv "OCR_MODE" "$OCR_MODE"
 kv "KEEP_PDF_DEBUG" "$KEEP_PDF_DEBUG"
 kv "OCRMYPDF_TIMEOUT" "$OCRMYPDF_TIMEOUT"
 hr
@@ -230,8 +245,9 @@ success=0
 failure=0
 file_idx=0
 
-progress_init "${#FILES[@]}"
+progress_init "$FILE_COUNT"
 
+if [[ $FILE_COUNT -gt 0 ]]; then
 for input_path in "${FILES[@]}"; do
     file_idx=$((file_idx + 1))
     filename="$(basename "$input_path")"
@@ -245,12 +261,12 @@ for input_path in "${FILES[@]}"; do
     rm -f "$log_path" "$tmp_log_path"
 
     echo
-    printf '%s[%d/%d]%s %s%s%s\n' "$C_DIM" "$file_idx" "${#FILES[@]}" "$C_RESET" "$C_BOLD" "$filename" "$C_RESET"
+    printf '%s[%d/%d]%s %s%s%s\n' "$C_DIM" "$file_idx" "$FILE_COUNT" "$C_RESET" "$C_BOLD" "$filename" "$C_RESET"
 
     start_ns="$(date +%s%N)"
 
     "$RUN_DECODER" "$input_path" auto \
-        --ocr=auto \
+        --ocr="$OCR_MODE" \
         --ocr-lang=kor+eng \
         --ocr-dpi="$OCR_DPI" \
         --ocr-psm=4 \
@@ -355,6 +371,7 @@ for input_path in "${FILES[@]}"; do
     success=$((success + 1))
     progress_advance
 done
+fi
 
 echo
 section "전처리 완료"
