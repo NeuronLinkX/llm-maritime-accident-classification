@@ -15,8 +15,8 @@ function read_csv(string $path): array {
     if (!is_file($path)) return [];
     $rows = [];
     $f = fopen($path, "r");
-    $header = fgetcsv($f);
-    while (($line = fgetcsv($f)) !== false) {
+    $header = fgetcsv($f, null, ",", '"', "");
+    while (($line = fgetcsv($f, null, ",", '"', "")) !== false) {
         if (count($line) !== count($header)) continue;
         $rows[] = array_combine($header, $line);
     }
@@ -48,14 +48,14 @@ function load_similarity_sample(): ?array {
     $path = OUT_DIR . "/similarity_sample.csv";
     if (!is_file($path)) return null;
     $f = fopen($path, "r");
-    $header = fgetcsv($f);
+    $header = fgetcsv($f, null, ",", '"', "");
     if (!$header) { fclose($f); return null; }
     $metaCols = ["id", "category", "filename", "cluster"];
     $docIds = array_slice($header, count($metaCols));
 
     $items = [];
     $matrix = [];
-    while (($line = fgetcsv($f)) !== false) {
+    while (($line = fgetcsv($f, null, ",", '"', "")) !== false) {
         if (count($line) !== count($header)) continue;
         $row = array_combine($header, $line);
         $items[] = ["id" => $row["id"], "category" => $row["category"], "cluster" => (int)$row["cluster"]];

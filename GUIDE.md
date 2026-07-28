@@ -989,6 +989,20 @@ define('HF_TOKEN', 'hf_...');
 
 gui_web STEP4 탭의 "로컬 LLM(DGX Spark)" 패널에서: **① "작동 유무 확인"으로 서버 응답을 먼저 확인 → ② 레이블링 실행**. 서버가 꺼져 있으면 실행 버튼이 비활성 상태로 유지됩니다.
 
+#### Apple Silicon Mac에서 실행
+
+Mac에서는 CUDA용 원본 모델 대신 MLX용 Qwen2.5-3B-Instruct 4-bit 모델을 사용합니다.
+저장소 루트에서 최초 한 번 준비한 뒤 통합 시작 스크립트를 실행합니다.
+
+```bash
+./setup_macos.sh       # Python 3.12 환경 구성 + 약 1.6GB 모델 다운로드
+./start_servers.sh     # PHP 리포트와 MLX LLM 서버 동시 실행
+```
+
+16GB 메모리 Mac을 기준으로 기본 카탈로그는 3B 모델 하나만 노출합니다. 모델은
+`step_4_process/models/`에 저장되며 Git에는 포함되지 않습니다. 9000번 포트가
+이미 사용 중이면 시작 스크립트가 다음 빈 포트(예: 9001)를 자동 선택합니다.
+
 ### `Qwen/Qwen2.5-3B-Instruct` 레이블링 결과
 
 - ![baseon_LLM_labeling_2](baseon_LLM_labeling_2.png)

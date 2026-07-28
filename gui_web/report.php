@@ -169,9 +169,10 @@ function build_step1_data(): array {
     arsort($catCounts);
     $categories = array_keys($catCounts);
 
-    $formats = array_values(array_unique(array_filter(array_map(fn($r) => $r["format"], $rows))));
+    // 처리 실패 행에는 추출 메타데이터 키가 없을 수 있다.
+    $formats = array_values(array_unique(array_filter(array_map(fn($r) => $r["format"] ?? "", $rows))));
     sort($formats, SORT_STRING);
-    $modes = array_values(array_unique(array_filter(array_map(fn($r) => $r["extraction_mode"], $rows))));
+    $modes = array_values(array_unique(array_filter(array_map(fn($r) => $r["extraction_mode"] ?? "", $rows))));
     sort($modes, SORT_STRING);
 
     $summary = [

@@ -26,18 +26,21 @@ config/config.php에 HF_TOKEN을 등록해야 로드된다(동의 없으면 이 
 status="error"로 표시되고 나머지는 정상 동작).
 """
 import os
+import platform
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
-import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 PORT = int(os.environ.get("LOCAL_LLM_PORT", "8500"))
+IS_APPLE_SILICON = platform.system() == "Darwin" and platform.machine() == "arm64"
+MLX_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx") if IS_APPLE_SILICON else None
 
 CONFIG_PHP_PATH = Path(__file__).resolve().parent.parent / "config" / "config.php"
 
@@ -83,12 +86,23 @@ load_hf_token_from_config()
 # 셋 다 "trust_remote_code로 저장소 커스텀 코드를 실행 → 이 transformers
 # 버전과 안 맞음"이라는 같은 패턴이라, transformers를 올리거나 저장소가
 # 코드를 업데이트하기 전까지는 재추가하지 않는다.
-MODEL_CATALOG = [
-    "Qwen/Qwen2.5-3B-Instruct",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "meta-llama/Llama-3.1-8B-Instruct",
-]
+if IS_APPLE_SILICON:
+    # 16GB Mac에서도 안정적으로 구동되는 MLX 4-bit 모델 하나를 기본 제공한다.
+    # API에는 기존 모델 ID를 유지해 PHP/UI와 저장된 결과의 호환성을 보존한다.
+    MODEL_CATALOG = ["Qwen/Qwen2.5-3B-Instruct"]
+    MODEL_PATHS = {
+        "Qwen/Qwen2.5-3B-Instruct": str(
+            Path(__file__).resolve().parent / "models" / "Qwen2.5-3B-Instruct-4bit"
+        )
+    }
+else:
+    MODEL_CATALOG = [
+        "Qwen/Qwen2.5-3B-Instruct",
+        "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen/Qwen2.5-14B-Instruct",
+        "meta-llama/Llama-3.1-8B-Instruct",
+    ]
+    MODEL_PATHS = {name: name for name in MODEL_CATALOG}
 
 models_state = {
     name: {"status": "not_loaded", "model": None, "tokenizer": None, "device": None, "error": None}
@@ -98,21 +112,33 @@ load_locks = {name: threading.Lock() for name in MODEL_CATALOG}
 
 
 def _load_model_sync(name: str):
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
     st = models_state[name]
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "mlx" if IS_APPLE_SILICON else None
+    if not IS_APPLE_SILICON:
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[local_llm_server] 로드 시작: {name} (device={device})")
     t0 = time.time()
     try:
-        tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=True)
-        model = AutoModelForCausalLM.from_pretrained(
-            name,
-            dtype=torch.bfloat16 if device == "cuda" else torch.float32,
-            device_map=device,
-            trust_remote_code=True,
-            attn_implementation="eager",  # flash-attn 미설치 환경 대응
-        )
+        if IS_APPLE_SILICON:
+            from mlx_lm import load
+            model_path = MODEL_PATHS[name]
+            if not Path(model_path).is_dir():
+                raise FileNotFoundError(
+                    f"MLX 모델이 없습니다: {model_path} — 저장소 루트에서 ./setup_macos.sh를 실행하세요."
+                )
+            model, tokenizer = load(model_path)
+        else:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_pretrained(
+                name,
+                dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+                device_map=device,
+                trust_remote_code=True,
+                attn_implementation="eager",
+            )
         st.update(model=model, tokenizer=tokenizer, device=device, status="ok", error=None)
         print(f"[local_llm_server] 로드 완료: {name} ({time.time() - t0:.1f}초)")
     except Exception as exc:
@@ -129,7 +155,10 @@ def ensure_loading(name: str) -> bool:
         with load_locks[name]:
             if st["status"] == "not_loaded":
                 st["status"] = "loading"
-                threading.Thread(target=_load_model_sync, args=(name,), daemon=True).start()
+                if IS_APPLE_SILICON:
+                    MLX_EXECUTOR.submit(_load_model_sync, name)
+                else:
+                    threading.Thread(target=_load_model_sync, args=(name,), daemon=True).start()
     return True
 
 
@@ -196,18 +225,33 @@ def chat_completions(req: ChatRequest):
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    if IS_APPLE_SILICON:
+        def mlx_generate():
+            from mlx_lm import generate
+            from mlx_lm.sample_utils import make_sampler
+            return generate(
+                model,
+                tokenizer,
+                prompt=prompt,
+                max_tokens=req.max_tokens,
+                sampler=make_sampler(temp=max(req.temperature, 0.0)),
+                verbose=False,
+            )
 
-    with torch.no_grad():
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=req.max_tokens,
-            temperature=max(req.temperature, 0.01),
-            do_sample=req.temperature > 0,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-    generated = output_ids[0][inputs["input_ids"].shape[1]:]
-    text = tokenizer.decode(generated, skip_special_tokens=True)
+        text = MLX_EXECUTOR.submit(mlx_generate).result()
+    else:
+        import torch
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        with torch.no_grad():
+            output_ids = model.generate(
+                **inputs,
+                max_new_tokens=req.max_tokens,
+                temperature=max(req.temperature, 0.01),
+                do_sample=req.temperature > 0,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+        generated = output_ids[0][inputs["input_ids"].shape[1]:]
+        text = tokenizer.decode(generated, skip_special_tokens=True)
 
     return {
         "id": f"local-{int(time.time() * 1000)}",
@@ -221,7 +265,8 @@ def chat_completions(req: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"[local_llm_server] 포트 {PORT}에서 대기 — 카탈로그 {len(MODEL_CATALOG)}개 모델(지연 로딩)")
+    backend = "Apple MLX" if IS_APPLE_SILICON else "PyTorch"
+    print(f"[local_llm_server] 포트 {PORT}에서 대기 — {backend}, 카탈로그 {len(MODEL_CATALOG)}개 모델(지연 로딩)")
     for m in MODEL_CATALOG:
         print(f"  - {m}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

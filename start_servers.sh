@@ -15,14 +15,37 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPORT_PORT_WAS_SET="${REPORT_PORT+x}"
 REPORT_PORT="${REPORT_PORT:-9000}"
 LOCAL_LLM_PORT="${LOCAL_LLM_PORT:-8500}"
 SBERT_ENV="$SCRIPT_DIR/step_2_process/sbert_env"
+MAC_ENV="$SCRIPT_DIR/.venv-mac"
 
-if [ ! -d "$SBERT_ENV" ]; then
-  echo "[start_servers] sbert_env가 없습니다: $SBERT_ENV" >&2
-  echo "[start_servers] GUIDE.md 15.2절대로 먼저 만들어 주세요." >&2
+if [ "$(uname -s)" = "Darwin" ]; then
+  PYTHON="$MAC_ENV/bin/python"
+  if [ ! -x "$PYTHON" ]; then
+    echo "[start_servers] macOS용 환경이 없습니다: $MAC_ENV" >&2
+    echo "[start_servers] ./setup_macos.sh 를 먼저 실행해 주세요." >&2
+    exit 1
+  fi
+else
+  PYTHON="$SBERT_ENV/bin/python3"
+  if [ ! -x "$PYTHON" ]; then
+    echo "[start_servers] sbert_env가 없습니다: $SBERT_ENV" >&2
+    echo "[start_servers] GUIDE.md 15.2절대로 먼저 만들어 주세요." >&2
+    exit 1
+  fi
+fi
+
+if ! command -v php >/dev/null 2>&1; then
+  echo "[start_servers] php가 없습니다. macOS에서는 'brew install php'로 설치해 주세요." >&2
   exit 1
+fi
+
+if [ -z "$REPORT_PORT_WAS_SET" ]; then
+  while lsof -nP -iTCP:"$REPORT_PORT" -sTCP:LISTEN >/dev/null 2>&1; do
+    REPORT_PORT=$((REPORT_PORT + 1))
+  done
 fi
 
 PIDS=()
@@ -44,9 +67,7 @@ PIDS+=("$!")
 echo "[start_servers] 로컬 LLM 서버(FastAPI) 시작 → http://localhost:${LOCAL_LLM_PORT}"
 (
   cd "$SCRIPT_DIR/step_4_process"
-  # shellcheck disable=SC1091
-  source "$SBERT_ENV/bin/activate"
-  LOCAL_LLM_PORT="$LOCAL_LLM_PORT" python3 local_llm_server.py
+  LOCAL_LLM_PORT="$LOCAL_LLM_PORT" "$PYTHON" local_llm_server.py
 ) &
 PIDS+=("$!")
 

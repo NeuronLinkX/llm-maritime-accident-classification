@@ -20,8 +20,8 @@ function read_csv(string $path): array {
     if (!is_file($path)) return [];
     $rows = [];
     $f = fopen($path, "r");
-    $header = fgetcsv($f);
-    while (($line = fgetcsv($f)) !== false) {
+    $header = fgetcsv($f, null, ",", '"', "");
+    while (($line = fgetcsv($f, null, ",", '"', "")) !== false) {
         if (count($line) !== count($header)) continue;
         $rows[] = array_combine($header, $line);
     }
