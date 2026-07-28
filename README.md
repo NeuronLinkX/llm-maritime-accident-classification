@@ -9,6 +9,8 @@ STEP 3  K-Means 군집화          Elbow+Silhouette 자동 K 탐색, 군집별 �
 STEP 4  LLM 구조화 라벨링       OpenAI API / DGX Spark 로컬 LLM 두 경로 병행 (실험 단계)
 ```
 
+![architecture_diagram_cleaned_v2](./architecture_diagram_cleaned_v2.svg)
+
 STEP 1~4 결과는 통합 웹 리포트(`gui_web/report.php`, 정적 스냅샷은 `gui_web/report.html`) 한 페이지에서 확인할 수 있습니다.
 
 ### 전체 프로세스
