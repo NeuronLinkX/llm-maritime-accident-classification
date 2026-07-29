@@ -7,6 +7,15 @@ OpenAI Chat Completions API와 호환되는 서버를 FastAPI로 띄운다. 모�
 — "여러 모델을 받아서 같은 군집 레이블링 프롬프트로 비교"하는 게 목적이라,
 한 프로세스 안에서 여러 모델을 오가며 쓸 수 있어야 한다.
 
+설정 (항상 config/config.json을 먼저 참고)
+    이 서버는 시작할 때마다 항상 <repo root>/config/config.json을 읽어
+    포트·모델 카탈로그·생성 기본값을 결정한다(load_config() 참고).
+    파일이 없거나 JSON이 깨져 있으면 예외를 던지지 않고 경고만 출력한 뒤
+    아래 코드에 내장된 기본값(_DEFAULT_*)으로 계속 동작한다 — config.json은
+    "있으면 우선 적용되는 오버라이드"이지 필수 파일이 아니다.
+    환경변수 LOCAL_LLM_PORT / LOCAL_LLM_CONFIG가 있으면 config.json보다도
+    우선한다(우선순위: 환경변수 > config.json > 내장 기본값).
+
 엔드포인트
     GET  /v1/models                     카탈로그 + 각 모델 로드 상태
     GET  /health?model=X[&load=1]       특정 모델 상태 확인(load=1이면 아직
@@ -18,13 +27,14 @@ OpenAI Chat Completions API와 호환되는 서버를 FastAPI로 띄운다. 모�
 실행
     source ../step_2_process/sbert_env/bin/activate
     python3 local_llm_server.py
-    (기본 포트 8500)
+    (기본 포트 8500, config/config.json의 server.port로 재정의 가능)
 
 주의: Llama-3.1-8B-Instruct는 Hugging Face에서 라이선스 동의 + 토큰이 필요한
 "gated" 모델이다. huggingface.co에서 해당 저장소 라이선스에 동의하고
 config/config.php에 HF_TOKEN을 등록해야 로드된다(동의 없으면 이 모델만
 status="error"로 표시되고 나머지는 정상 동작).
 """
+import json
 import os
 import re
 import threading
@@ -37,9 +47,54 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-PORT = int(os.environ.get("LOCAL_LLM_PORT", "8500"))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PHP_PATH = REPO_ROOT / "config" / "config.php"
+CONFIG_JSON_PATH = Path(os.environ["LOCAL_LLM_CONFIG"]) if os.environ.get("LOCAL_LLM_CONFIG") \
+    else REPO_ROOT / "config" / "config.json"
 
-CONFIG_PHP_PATH = Path(__file__).resolve().parent.parent / "config" / "config.php"
+# 카탈로그/포트/생성 기본값이 config.json에 없을 때 쓰는 내장 기본값.
+# config.json 자체가 없어도(또는 일부 키만 있어도) 서버가 예전과 동일하게 동작해야 한다.
+_DEFAULT_PORT = 8500
+_DEFAULT_HOST = "0.0.0.0"
+_DEFAULT_TEMPERATURE = 0.2
+_DEFAULT_MAX_TOKENS = 2000
+_DEFAULT_CATALOG = [
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
+]
+
+
+def load_config() -> dict:
+    """config/config.json을 읽는다.
+
+    파일이 없거나 파싱에 실패해도 예외를 던지지 않는다 — STEP1 전처리와 같은
+    원칙("실패는 조용히 폴백")으로, 이 서버도 config.json 없이 예전 하드코딩
+    기본값만으로 계속 동작할 수 있어야 한다. 대신 왜 기본값으로 넘어갔는지는
+    항상 화면에 남긴다.
+    """
+    if not CONFIG_JSON_PATH.is_file():
+        print(f"[local_llm_server] config.json을 찾을 수 없습니다({CONFIG_JSON_PATH}) — 내장 기본값 사용.")
+        return {}
+    try:
+        with open(CONFIG_JSON_PATH, encoding="utf-8") as f:
+            cfg = json.load(f)
+        print(f"[local_llm_server] 설정 로드: {CONFIG_JSON_PATH}")
+        return cfg if isinstance(cfg, dict) else {}
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"[local_llm_server] config.json 파싱 실패({exc}) — 내장 기본값 사용.")
+        return {}
+
+
+CONFIG = load_config()
+
+PORT = int(os.environ.get("LOCAL_LLM_PORT") or CONFIG.get("server", {}).get("port", _DEFAULT_PORT))
+HOST = CONFIG.get("server", {}).get("host", _DEFAULT_HOST)
+
+_gen_cfg = CONFIG.get("generation", {})
+DEFAULT_TEMPERATURE = _gen_cfg.get("default_temperature", _DEFAULT_TEMPERATURE)
+DEFAULT_MAX_TOKENS = _gen_cfg.get("default_max_tokens", _DEFAULT_MAX_TOKENS)
 
 
 def load_hf_token_from_config():
@@ -83,12 +138,9 @@ load_hf_token_from_config()
 # 셋 다 "trust_remote_code로 저장소 커스텀 코드를 실행 → 이 transformers
 # 버전과 안 맞음"이라는 같은 패턴이라, transformers를 올리거나 저장소가
 # 코드를 업데이트하기 전까지는 재추가하지 않는다.
-MODEL_CATALOG = [
-    "Qwen/Qwen2.5-3B-Instruct",
-    "Qwen/Qwen2.5-7B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "meta-llama/Llama-3.1-8B-Instruct",
-]
+#
+# 카탈로그는 config.json → 없으면 내장 기본값(_DEFAULT_CATALOG) 순으로 정한다.
+MODEL_CATALOG = CONFIG.get("models", {}).get("default", {}).get("catalog") or _DEFAULT_CATALOG
 
 models_state = {
     name: {"status": "not_loaded", "model": None, "tokenizer": None, "device": None, "error": None}
@@ -171,8 +223,8 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     model: Optional[str] = None
     messages: list[ChatMessage]
-    temperature: float = 0.2
-    max_tokens: int = 2000
+    temperature: float = DEFAULT_TEMPERATURE
+    max_tokens: int = DEFAULT_MAX_TOKENS
     response_format: Optional[dict] = None  # 참고만 함 — 실제 JSON 준수는 프롬프트 지시에 의존
 
 
@@ -221,7 +273,10 @@ def chat_completions(req: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"[local_llm_server] 포트 {PORT}에서 대기 — 카탈로그 {len(MODEL_CATALOG)}개 모델(지연 로딩)")
+    config_source = str(CONFIG_JSON_PATH) if CONFIG else f"{CONFIG_JSON_PATH} (없음/파싱실패 — 내장 기본값)"
+    print(f"[local_llm_server] 설정 파일: {config_source}")
+    print(f"[local_llm_server] {HOST}:{PORT}에서 대기 — 카탈로그 {len(MODEL_CATALOG)}개 모델(지연 로딩), "
+          f"temperature 기본값 {DEFAULT_TEMPERATURE}, max_tokens 기본값 {DEFAULT_MAX_TOKENS}")
     for m in MODEL_CATALOG:
         print(f"  - {m}")
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host=HOST, port=PORT)

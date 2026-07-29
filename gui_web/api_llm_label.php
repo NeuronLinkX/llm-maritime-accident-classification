@@ -22,6 +22,11 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     exit;
 }
 
+// php.ini의 max_execution_time(기본 30초)이 아래 stream_context의 timeout=>60보다
+// 짧으면, OpenAI 응답이 30초를 넘기는 순간 PHP가 스크립트를 강제 종료한다
+// (api_local_llm_label.php와 동일한 문제 — 상세 사유는 그쪽 주석 참고).
+set_time_limit(90);
+
 require_once __DIR__ . "/lib_llm_common.php";
 
 const CONFIG_PATH = __DIR__ . "/../config/config.php";
@@ -53,7 +58,9 @@ $payload = [
         ["role" => "system", "content" => $systemPrompt],
         ["role" => "user", "content" => $userPrompt],
     ],
-    "temperature" => 0.2,
+    // config/config.json의 generation.default_temperature — local_llm_server.py와
+    // 공유하는 같은 파일이라 두 경로의 기본값이 어긋나지 않는다.
+    "temperature" => \LlmCommon\default_temperature(),
     "max_tokens" => 2000,
     "response_format" => ["type" => "json_object"],
 ];
@@ -72,7 +79,11 @@ $streamContext = stream_context_create([
 $resp = @file_get_contents("https://api.openai.com/v1/chat/completions", false, $streamContext);
 
 $httpCode = 0;
-if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+// PHP 8.4+의 $http_response_header 매직 변수는 PHP 8.5부터 deprecated다 —
+// 직접 참조하면 경고가 응답 바디 맨 앞에 HTML로 섞여 들어가 JSON.parse()가
+// 깨진다(브라우저에서 "Unexpected token '<'"로 나타남). http_get_last_response_headers()로 대체.
+$responseHeaders = http_get_last_response_headers() ?? [];
+if (isset($responseHeaders[0]) && preg_match('/\s(\d{3})\s/', $responseHeaders[0], $m)) {
     $httpCode = (int)$m[1];
 }
 

@@ -26,6 +26,13 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     exit;
 }
 
+// php.ini의 max_execution_time(기본 30초)은 아래 stream_context의 timeout=>400과
+// 별개로 PHP 스크립트 자체를 강제 종료시킨다 — file_get_contents()가 30초를 넘기면
+// "Maximum execution time exceeded" 치명적 오류로 php -S 프로세스 자체가 죽고,
+// 그 순간 연결돼 있던 다른 모든 요청(브라우저 포함)도 "Failed to fetch"로 끊긴다.
+// 아래 stream timeout(400초)보다 여유 있게 스크립트 실행시간 한도를 늘려둔다.
+set_time_limit(420);
+
 require_once __DIR__ . "/lib_llm_common.php";
 
 const DEFAULT_ENDPOINT = "http://localhost:8500/v1/chat/completions";
@@ -54,7 +61,14 @@ $payload = [
         ["role" => "system", "content" => $systemPrompt],
         ["role" => "user", "content" => $userPrompt],
     ],
-    "temperature" => 0.2,
+    // 표본(array_slice로 항상 동일)에 더해 temperature까지 0으로 고정하면 100회
+    // 반복이 매번 같은 답을 내는 동어반복이 되어 재현성 측정 자체가 무의미해진다.
+    // 라벨이 흔들리는 정도(A/G, 군집3처럼 낮게 나오는 것 포함)는 그 자체로
+    // "이 군집 라벨을 얼마나 신뢰할 수 있는가"를 보여주는 진단 신호이므로 그대로 둔다.
+    // "정리되어 보임"은 온도가 아니라 build_prompt()에서 후보 어휘를 고정한 것으로 확보한다.
+    // 값 자체는 config/config.json의 generation.default_temperature — local_llm_server.py와
+    // 공유하는 같은 파일이라 두 경로의 기본값이 어긋나지 않는다.
+    "temperature" => \LlmCommon\default_temperature(),
     "max_tokens" => 2000,
     "response_format" => ["type" => "json_object"],
 ];
@@ -84,7 +98,11 @@ $streamContext = stream_context_create([
 $resp = @file_get_contents($endpoint, false, $streamContext);
 
 $httpCode = 0;
-if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+// PHP 8.4+의 $http_response_header 매직 변수는 PHP 8.5부터 deprecated다 —
+// 직접 참조하면 경고가 응답 바디 맨 앞에 HTML로 섞여 들어가 JSON.parse()가
+// 깨진다(브라우저에서 "Unexpected token '<'"로 나타남). http_get_last_response_headers()로 대체.
+$responseHeaders = http_get_last_response_headers() ?? [];
+if (isset($responseHeaders[0]) && preg_match('/\s(\d{3})\s/', $responseHeaders[0], $m)) {
     $httpCode = (int)$m[1];
 }
 $respData = $resp === false ? null : json_decode($resp, true);
