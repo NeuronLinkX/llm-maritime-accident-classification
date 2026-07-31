@@ -81,8 +81,13 @@ $resp = @file_get_contents("https://api.openai.com/v1/chat/completions", false, 
 $httpCode = 0;
 // PHP 8.4+의 $http_response_header 매직 변수는 PHP 8.5부터 deprecated다 —
 // 직접 참조하면 경고가 응답 바디 맨 앞에 HTML로 섞여 들어가 JSON.parse()가
-// 깨진다(브라우저에서 "Unexpected token '<'"로 나타남). http_get_last_response_headers()로 대체.
-$responseHeaders = http_get_last_response_headers() ?? [];
+// 깨진다(브라우저에서 "Unexpected token '<'"로 나타남). http_get_last_response_headers()로
+// 대체하되, 이 함수 자체가 PHP 8.4부터 생겨서 그보다 낮은 버전(이 서버는 8.3)에서는
+// "Call to undefined function"으로 즉시 fatal error가 나 응답 바디가 통째로 비어버린다
+// (브라우저에서 "Unexpected end of JSON input") — 있으면 새 함수, 없으면 매직 변수로 폴백.
+$responseHeaders = function_exists("http_get_last_response_headers")
+    ? (http_get_last_response_headers() ?? [])
+    : ($http_response_header ?? []);
 if (isset($responseHeaders[0]) && preg_match('/\s(\d{3})\s/', $responseHeaders[0], $m)) {
     $httpCode = (int)$m[1];
 }

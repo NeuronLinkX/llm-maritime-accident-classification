@@ -152,10 +152,74 @@ function load_keywords(): array {
 // 같은 글자로 보이지만 바이트가 달라 정확 문자열 비교(===)가 전부 실패하고,
 // 대표문장(sample_sentences)이 조용히 0건이 되어(예외 없음) STEP4가 근거 문장
 // 없이 키워드 8개만으로 라벨링해야 하는 상황으로 이어졌다.
+// 이 서버(mbstring도 없는 최소 PHP 설치, php -m 참고)엔 intl 확장도 없어서
+// \Normalizer 클래스를 쓸 수 없다("Class Normalizer not found"로 요청마다
+// 즉시 fatal error). 유니코드 전체를 정규화할 필요는 없고 — 여기서 NFC/NFD
+// 차이가 실제로 나는 경우는 macOS가 분해형으로 저장하는 한글 자모뿐이므로,
+// 한글 조합(초성+중성+[종성] → 완성형 음절)만 표준 알고리즘(UAX #15 부록)으로
+// 직접 재조합한다. 한글이 아닌 코드포인트는 그대로 통과한다.
+function nfc_normalize_hangul(string $s): string {
+    $codepoints = [];
+    $len = strlen($s);
+    $i = 0;
+    while ($i < $len) {
+        $b0 = ord($s[$i]);
+        if ($b0 < 0x80) { $codepoints[] = $b0; $i += 1; }
+        elseif (($b0 & 0xE0) === 0xC0 && $i + 1 < $len) {
+            $codepoints[] = (($b0 & 0x1F) << 6) | (ord($s[$i + 1]) & 0x3F);
+            $i += 2;
+        } elseif (($b0 & 0xF0) === 0xE0 && $i + 2 < $len) {
+            $codepoints[] = (($b0 & 0x0F) << 12) | ((ord($s[$i + 1]) & 0x3F) << 6) | (ord($s[$i + 2]) & 0x3F);
+            $i += 3;
+        } elseif (($b0 & 0xF8) === 0xF0 && $i + 3 < $len) {
+            $codepoints[] = (($b0 & 0x07) << 18) | ((ord($s[$i + 1]) & 0x3F) << 12)
+                | ((ord($s[$i + 2]) & 0x3F) << 6) | (ord($s[$i + 3]) & 0x3F);
+            $i += 4;
+        } else { $codepoints[] = $b0; $i += 1; } // 깨진 바이트는 그대로 통과
+    }
+
+    $LBase = 0x1100; $VBase = 0x1161; $TBase = 0x11A7;
+    $LCount = 19; $VCount = 21; $TCount = 28;
+    $SBase = 0xAC00;
+
+    $composed = [];
+    $n = count($codepoints);
+    $i = 0;
+    while ($i < $n) {
+        $L = $codepoints[$i];
+        if ($L >= $LBase && $L < $LBase + $LCount && $i + 1 < $n) {
+            $V = $codepoints[$i + 1];
+            if ($V >= $VBase && $V < $VBase + $VCount) {
+                $tIndex = 0;
+                $consumed = 2;
+                if ($i + 2 < $n) {
+                    $T = $codepoints[$i + 2];
+                    if ($T > $TBase && $T < $TBase + $TCount) { $tIndex = $T - $TBase; $consumed = 3; }
+                }
+                $composed[] = $SBase + ((($L - $LBase) * $VCount) + ($V - $VBase)) * $TCount + $tIndex;
+                $i += $consumed;
+                continue;
+            }
+        }
+        $composed[] = $L;
+        $i += 1;
+    }
+
+    $out = "";
+    foreach ($composed as $cp) {
+        if ($cp < 0x80) $out .= chr($cp);
+        elseif ($cp < 0x800) $out .= chr(0xC0 | ($cp >> 6)) . chr(0x80 | ($cp & 0x3F));
+        elseif ($cp < 0x10000) $out .= chr(0xE0 | ($cp >> 12)) . chr(0x80 | (($cp >> 6) & 0x3F)) . chr(0x80 | ($cp & 0x3F));
+        else $out .= chr(0xF0 | ($cp >> 18)) . chr(0x80 | (($cp >> 12) & 0x3F))
+            . chr(0x80 | (($cp >> 6) & 0x3F)) . chr(0x80 | ($cp & 0x3F));
+    }
+    return $out;
+}
+
 function load_texts_by_id(array $wantedIds): array {
     $texts = [];
     if (!is_file(STEP1_JSONL)) return $texts;
-    $normalize = fn(string $s): string => \Normalizer::normalize($s, \Normalizer::FORM_C) ?: $s;
+    $normalize = fn(string $s): string => nfc_normalize_hangul($s);
     // normalizedId => 원본 요청 id. 호출자는 원본 id로 다시 조회하므로, 매치되면
     // 정규화된 폼이 아니라 원본 형태의 키로 돌려줘야 호출부 조회가 깨지지 않는다.
     $wanted = [];
