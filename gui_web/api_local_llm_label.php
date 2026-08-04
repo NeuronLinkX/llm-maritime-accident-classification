@@ -47,6 +47,8 @@ if (!parse_url($endpoint) || !preg_match('#^https?://#', $endpoint)) {
 }
 $model = trim((string)($body["model"] ?? ""));
 $samplesOverride = \LlmCommon\sanitize_samples_override($body["samples_per_cluster"] ?? null);
+$promptVariant = \LlmCommon\sanitize_prompt_variant($body["prompt_variant"] ?? null);
+$temperatureOverride = \LlmCommon\sanitize_temperature($body["temperature"] ?? null);
 
 $clusterBlocks = \LlmCommon\build_cluster_blocks($samplesOverride);
 if ($clusterBlocks === null) {
@@ -54,7 +56,7 @@ if ($clusterBlocks === null) {
     echo json_encode(["ok" => false, "error" => "STEP3 산출물(clusters.csv)을 찾을 수 없습니다. kmeans를 먼저 실행하세요."]);
     exit;
 }
-[$systemPrompt, $userPrompt] = \LlmCommon\build_prompt($clusterBlocks);
+[$systemPrompt, $userPrompt] = \LlmCommon\build_prompt($clusterBlocks, $promptVariant);
 
 $payload = [
     "messages" => [
@@ -68,7 +70,7 @@ $payload = [
     // "정리되어 보임"은 온도가 아니라 build_prompt()에서 후보 어휘를 고정한 것으로 확보한다.
     // 값 자체는 config/config.json의 generation.default_temperature — local_llm_server.py와
     // 공유하는 같은 파일이라 두 경로의 기본값이 어긋나지 않는다.
-    "temperature" => \LlmCommon\default_temperature(),
+    "temperature" => \LlmCommon\default_temperature($temperatureOverride),
     "max_tokens" => 2000,
     "response_format" => ["type" => "json_object"],
 ];
@@ -138,5 +140,7 @@ echo json_encode([
     "ok" => true,
     "model" => $respData["model"] ?? "local",
     "clusters" => $clusters,
-    "config_version" => \LlmCommon\config_version_key($samplesOverride),
+    "config_version" => \LlmCommon\config_version_key($samplesOverride, $promptVariant, $temperatureOverride),
+    "prompt_variant" => $promptVariant,
+    "temperature" => \LlmCommon\default_temperature($temperatureOverride),
 ], JSON_UNESCAPED_UNICODE);

@@ -42,6 +42,16 @@ import time
 from pathlib import Path
 from typing import Optional
 
+# 모델 4개 다 ~/.cache/huggingface/hub에 이미 완전히 캐시돼 있는데도, huggingface_hub는
+# from_pretrained() 때마다 기본적으로 "캐시가 최신인지" 확인하려고 허깅페이스 서버에
+# 네트워크 요청을 한 번 날린다 — 이 기기가 와이파이로 붙어 있어 이 확인 요청이 느려지거나
+# 응답이 안 오면, 모델 자체는 로컬에 있는데도 로딩 전체가 그 응답을 기다리며 멈춰버린다
+# (실측: 14B 로드가 GPU 0% 상태로 huggingface.co쪽 소켓만 열어둔 채 몇 분씩 멈춤).
+# "로컬 LLM" 경로는 애초에 인터넷 연결 없이 도는 게 목적(GUIDE.md)이므로, transformers를
+# import하기 전에 오프라인 모드를 강제해 이 네트워크 의존 자체를 없앤다.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -157,12 +167,13 @@ def _load_model_sync(name: str):
     print(f"[local_llm_server] 로드 시작: {name} (device={device})")
     t0 = time.time()
     try:
-        tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=True, local_files_only=True)
         model = AutoModelForCausalLM.from_pretrained(
             name,
             dtype=torch.bfloat16 if device == "cuda" else torch.float32,
             device_map=device,
             trust_remote_code=True,
+            local_files_only=True,  # 위 HF_HUB_OFFLINE과 이중으로 — 캐시에 없으면 조용히 네트워크로 새는 대신 바로 에러를 낸다
             # flash-attn은 이 환경(aarch64, GB10)에 사전빌드 wheel이 없어 설치가 무겁다.
             # 대신 PyTorch 내장 sdpa(scaled dot product attention)를 쓴다 — 별도 설치 없이
             # eager보다 시퀀스 길이에 따른 시간·메모리 증가폭이 훨씬 작다(eager는 O(n^2)
@@ -249,6 +260,7 @@ def chat_completions(req: ChatRequest):
 
     tokenizer = st["tokenizer"]
     model = st["model"]
+    device = st["device"]
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)

@@ -90,19 +90,61 @@ function candidate_labels(): string {
     return $items ? implode(", ", $items) : _DEFAULT_CANDIDATE_LABELS;
 }
 
-function system_prompt(): string {
+// config/prompt_variants.json — STEP4 프롬프트 A/B/C 실험용 오버라이드. candidate_labels는
+// config.json 값을 그대로 공유하고, system_prompt/instruction만 변형별로 바꿔 낀다.
+// 파일이 없거나 variant를 넘기지 않으면 기존 config.json 기본 프롬프트를 그대로 쓴다.
+const PROMPT_VARIANTS_PATH = __DIR__ . "/../config/prompt_variants.json";
+
+function prompt_variants(): array {
+    static $variants = null;
+    if ($variants !== null) return $variants;
+    if (!is_file(PROMPT_VARIANTS_PATH)) return $variants = [];
+    $decoded = json_decode((string)file_get_contents(PROMPT_VARIANTS_PATH), true);
+    if (!is_array($decoded)) return $variants = [];
+    unset($decoded["_comment"]);
+    return $variants = $decoded;
+}
+
+function sanitize_prompt_variant($raw): ?string {
+    if (!is_string($raw) || $raw === "") return null;
+    return array_key_exists($raw, prompt_variants()) ? $raw : null;
+}
+
+function sanitize_temperature($raw): ?float {
+    if ($raw === null || $raw === "") return null;
+    if (!is_numeric($raw)) return null;
+    $t = (float)$raw;
+    if ($t < 0 || $t > 2) return null;
+    return $t;
+}
+
+function system_prompt(?string $variantKey = null): string {
+    if ($variantKey !== null) {
+        $variant = prompt_variants()[$variantKey] ?? null;
+        if (is_array($variant) && isset($variant["system_prompt"])) {
+            return (string)$variant["system_prompt"];
+        }
+    }
     return app_config()["prompt"]["system_prompt"] ?? _DEFAULT_SYSTEM_PROMPT;
 }
 
 /** instruction이 배열(줄 단위)이면 개행으로 이어붙이고, 문자열이면 그대로 쓴다. */
-function prompt_instruction(): string {
+function prompt_instruction(?string $variantKey = null): string {
+    if ($variantKey !== null) {
+        $variant = prompt_variants()[$variantKey] ?? null;
+        if (is_array($variant) && isset($variant["instruction"])) {
+            $raw = $variant["instruction"];
+            return is_array($raw) ? implode("\n", array_map("strval", $raw)) : (string)$raw;
+        }
+    }
     $raw = app_config()["prompt"]["instruction"] ?? null;
     if ($raw === null) return _DEFAULT_INSTRUCTION;
     if (is_array($raw)) return implode("\n", array_map("strval", $raw));
     return (string)$raw;
 }
 /** api_llm_label.php / api_local_llm_label.php가 공유하는 생성 temperature 기본값. */
-function default_temperature(): float {
+function default_temperature(?float $override = null): float {
+    if ($override !== null) return $override;
     return (float)(app_config()["generation"]["default_temperature"] ?? _DEFAULT_TEMPERATURE);
 }
 
@@ -323,19 +365,19 @@ function build_cluster_blocks(?array $samplesOverride = null): ?array {
  * 바꾸고 싶을 때 코드를 고치지 않고 config.json만 수정하면 되게 하기 위함이다.
  * 군집 수·JSON 스키마 등 요청마다 달라지는 구조적인 부분만 여기 코드로 남긴다.
  */
-function build_prompt(array $clusterBlocks): array {
+function build_prompt(array $clusterBlocks, ?string $variantKey = null): array {
     $nClusters = count($clusterBlocks);
     $userPrompt = "다음은 한국 해양안전심판원 재결서를 SBERT 임베딩 + K-Means로 군집화한 결과입니다. "
         . "군집은 총 {$nClusters}개(cluster 번호: " . implode(", ", array_column($clusterBlocks, "cluster")) . ")이며, "
         . "**반드시 {$nClusters}개 군집 전부에 대해 빠짐없이 하나씩** 라벨을 제안해야 합니다. 일부만 답하지 마세요.\n\n"
-        . prompt_instruction() . "\n\n"
+        . prompt_instruction($variantKey) . "\n\n"
         . "사고원인 후보: " . candidate_labels() . "\n\n"
         . "다음 JSON 형식으로만 답하세요 (다른 텍스트 금지, clusters 배열 길이는 반드시 {$nClusters}. "
         . "proposed_label은 위 후보 목록의 이름과 정확히 일치해야 하며, 새로 지어낸 표현은 쓰지 마세요):\n"
         . '{"clusters": [{"cluster": 0, "proposed_label": "...", "rationale": "...", "confidence": 0.0}]}' . "\n\n"
         . "군집 데이터:\n" . json_encode($clusterBlocks, JSON_UNESCAPED_UNICODE);
 
-    return [system_prompt(), $userPrompt];
+    return [system_prompt($variantKey), $userPrompt];
 }
 
 /**
@@ -389,7 +431,7 @@ function parse_clusters_response(string $content): ?array {
  * 코드의 기본 SAMPLES_PER_CLUSTER와 별개로, 실제로 이 요청에 쓰인 표본 수를
  * 기준으로 버전을 나눠야 실행 기록과 저장 폴더가 항상 일치하기 때문이다.
  */
-function config_version_key(?array $samplesOverride = null): string {
+function config_version_key(?array $samplesOverride = null, ?string $variantKey = null, ?float $temperature = null): string {
     $spc = $samplesOverride ?? SAMPLES_PER_CLUSTER;
     ksort($spc);
     $sig = [
@@ -398,16 +440,20 @@ function config_version_key(?array $samplesOverride = null): string {
         "sample_text_maxlen" => SAMPLE_TEXT_MAXLEN,
         "keywords_per_cluster" => KEYWORDS_PER_CLUSTER,
         "candidate_labels" => candidate_labels(),
-        "system_prompt" => system_prompt(),
-        "instruction" => prompt_instruction(),
+        "system_prompt" => system_prompt($variantKey),
+        "instruction" => prompt_instruction($variantKey),
     ];
+    if ($temperature !== null) $sig["temperature"] = $temperature;
     $hash = substr(md5(json_encode($sig)), 0, 8);
-    return "s" . implode("-", $spc) . "_" . $hash;
+    $key = "s" . implode("-", $spc) . "_" . $hash;
+    if ($variantKey !== null) $key .= "_p" . $variantKey;
+    if ($temperature !== null) $key .= "_t" . sprintf("%.1f", $temperature);
+    return $key;
 }
 
 /** config_version_key($samplesOverride)에 대응하는 실행 기록 저장 디렉터리. 없으면 만든다. */
-function runs_dir_for_config(?array $samplesOverride = null): string {
-    $dir = __DIR__ . "/../step_4_process/output/runs/" . config_version_key($samplesOverride);
+function runs_dir_for_config(?array $samplesOverride = null, ?string $variantKey = null, ?float $temperature = null): string {
+    $dir = __DIR__ . "/../step_4_process/output/runs/" . config_version_key($samplesOverride, $variantKey, $temperature);
     if (!is_dir($dir)) mkdir($dir, 0775, true);
     return $dir;
 }

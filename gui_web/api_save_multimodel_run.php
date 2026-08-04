@@ -39,8 +39,10 @@ if (!is_array($results) || !$results) {
 }
 
 $samplesOverride = \LlmCommon\sanitize_samples_override($body["samples_per_cluster"] ?? null);
-$configVersion = \LlmCommon\config_version_key($samplesOverride);
-$runsDir = \LlmCommon\runs_dir_for_config($samplesOverride); // 폴더 없으면 여기서 생성
+$promptVariant = \LlmCommon\sanitize_prompt_variant($body["prompt_variant"] ?? null);
+$temperatureOverride = \LlmCommon\sanitize_temperature($body["temperature"] ?? null);
+$configVersion = \LlmCommon\config_version_key($samplesOverride, $promptVariant, $temperatureOverride);
+$runsDir = \LlmCommon\runs_dir_for_config($samplesOverride, $promptVariant, $temperatureOverride); // 폴더 없으면 여기서 생성
 $RUNS_FILE = $runsDir . "/multimodel_runs.jsonl";
 
 $id = date("Ymd-His");
@@ -49,6 +51,8 @@ $record = [
     "saved_at" => date("c"),
     "config_version" => $configVersion,
     "samples_per_cluster" => $samplesOverride ?? \LlmCommon\SAMPLES_PER_CLUSTER,
+    "prompt_variant" => $promptVariant,
+    "temperature" => \LlmCommon\default_temperature($temperatureOverride),
     "results" => $results,
 ];
 

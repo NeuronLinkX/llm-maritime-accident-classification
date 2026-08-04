@@ -543,6 +543,12 @@
   }
   .step4-tab:hover { color: var(--sea-700); }
   .step4-tab.active { color: var(--sea-700); border-bottom-color: var(--sea-700); }
+
+  /* ---- STEP4: BASELINE 실험 매트릭스 통계 요약(워크트리 9102의 api_prompt_matrix_stability.php에서 fetch) ---- */
+  .mm-legacy-details { margin-top: 20px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
+  .mm-legacy-details > summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--ink-500); }
+  .mm-legacy-details > summary:hover { color: var(--sea-700); }
+  .mm-legacy-details[open] > summary { margin-bottom: 10px; }
   .llm-btn-row { display: inline-flex; align-items: center; gap: 8px; }
   .llm-run-btn {
     border: 1px solid var(--sea-700); background: var(--sea-700); color: #fff;
@@ -808,9 +814,7 @@
         <div class="nav-group">
           <button class="nav-trigger" aria-expanded="false" type="button">STEP 4 · 구조화 레이블링 <span class="car">▾</span></button>
           <div class="nav-panel">
-            <a href="#step4-api">1. API 빠른 확인 (OpenAI)</a>
-            <a href="#step4-local">2. 로컬 LLM (DGX Spark)</a>
-            <a href="#step4-local-mm">3. 로컬 LLM 다중 모델 비교</a>
+            <a href="#step4-local-mm">BASELINE · 프롬프트x온도 실험 매트릭스</a>
           </div>
         </div>
       </nav>
@@ -1028,17 +1032,121 @@
       <h1>군집 → 사고원인 분류 레이블링</h1>
       <div class="subhead">STEP 3의 군집을 사전 정의된 사고원인 체계로 구조화하는 단계입니다. 아직 검증 전 실험 단계라 두 경로를 나란히 검토합니다.  결과를 그대로 결론으로 쓰지 않습니다.</div>
       <div class="baseline-note"><span class="bn-tag">baseline</span><div class="bn-body">
-        사람이 직접 매긴 정답 라벨은 아직 없습니다. 대신 정식 baseline이 나오기 전까지 쓸 잠정 기준선을 아래처럼 잡습니다.<br><br>
-        ① 기존 분류(파일명 접두어)와의 대조표 : 2개 이상 모델이 일치하면 잠정 채택, 갈리면 재검토 필요로 표시됩니다.<br><br>
-        ② 서로 다른 모델(Qwen 3B/7B/14B, Llama-3.1-8B, GPT-4o-mini) 간 라벨 합의 여부.<br><br>
-        <mark class="bn-highlight">③ (다음 단계, 아직 미착수) 군집당 5~6건씩 총 30건 내외를 사람이 직접 라벨링해 실제 정확도를 계산.</mark><br><br>
+        사람이 직접 매긴 정답 라벨은 아직 없습니다. 대신 정식 baseline이 나오기 전까지 쓸 잠정 기준선을, 현재 진행 중인 <b>프롬프트 3종(A/B/C) × temperature 2종(0.0/0.2) 실험 매트릭스</b>에 맞춰 아래처럼 잡습니다(2026-08-04 갱신).<br><br>
+        <mark class="bn-highlight">BASELINE = A(문자적 근거대조형) × temperature 0.0</mark></br>
+        <code>   config/config.json</code>의 기본 프롬프트/temperature를 이 조합과 동일하게 맞췄습니다. 이후 이 기본값을 바꾸면 아래 실험 매트릭스와 어긋나므로, 실험이 끝나기 전까지는 건드리지 않습니다.<br>
+        ① 3종 프롬프트(A 문자적 근거대조 / B 근본원인 인과사슬 / C 대분류 배제법) × 2종 temperature 조합별로, 같은 (모델, 군집)을 반복 실행했을 때 가장 많이 나온 라벨(최빈값)의 비율로 "안정도"를 봅니다.<br>
+        ② 비교 대상 모델은 Qwen2.5-3B / Qwen2.5-14B / Llama-3.1-8B입니다. Qwen2.5-7B-Instruct는 응답 지연·타임아웃이 잦아 이번 매트릭스에서 제외했고, OpenAI(GPT-4o-mini)는 별도의 단일 모델 빠른 확인 경로라 이번 다중 모델 비교에는 포함하지 않았습니다.<br>
+        <mark class="bn-highlight">③ (다음 단계, 아직 미착수) 이 매트릭스에서 상대적으로 안정적인 조합을 추린 뒤, 군집당 5~6건씩 총 30건 내외를 사람이 직접 라벨링해 실제 정확도를 계산 → 그 결과로 STEP4 기준 프롬프트/temperature를 확정.</mark><br><br>
       </div></div>
     </header>
 
-    <div class="step4-tabs" role="tablist">
-      <button class="step4-tab active" data-tab="api" type="button" role="tab" aria-selected="true">1. API 빠른 확인 (OpenAI)</button>
-      <button class="step4-tab" data-tab="local" type="button" role="tab" aria-selected="false">2. 로컬 LLM (DGX Spark)</button>
-    </div>
+    <section class="card" id="step4-local-mm">
+      <div class="card-head"><h2>BASELINE — 프롬프트 3종 × Temperature 2종 실험 매트릭스</h2></div>
+      <div class="card-note">
+        기존에 있던 "1. API 빠른 확인 (OpenAI)"·"2. 로컬 LLM (DGX Spark)" 단발 실행 메뉴는 접었습니다 — 이 실험이 진행되는 동안은 위 baseline-note의 조합(A×T0.0)이 이 페이지의 기준이고, 임의로 다른 조합을 눌러서 돌리면 그 기준이 흔들리기 때문입니다.
+        <code>step_4_process/run_prompt_temp_matrix.py</code>가 백그라운드에서 6칸(3프롬프트×2온도)을 채우는 중입니다(실행 버튼 없음, 조회 전용). 아래는 그 <b>통계 요약</b>입니다 — 회차별 상세 진행률·히트맵·아키텍처 다이어그램 등 전체 리포트는 <code>report_step4_matrix.php</code>에 별도로 있습니다.
+      </div>
+
+      <div id="baseline-summary">
+        <div class="mm-summary-pending" id="baseline-summary-pending">실험 진행 중입니다 — 6칸이 모두 채워지면 이 자리에 통계 요약이 표시됩니다.</div>
+        <div id="baseline-summary-content" style="display:none">
+          <div class="crosstab-wrap" style="margin-bottom:18px;">
+            <table class="crosstab" id="baseline-cell-table"></table>
+          </div>
+          <div class="compare-cols" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:24px;">
+            <div class="llm-comparison" style="margin-top:0; padding-top:0; border-top:none;">
+              <div class="compare-flow-head">Temperature별 평균 안정도</div>
+              <div id="baseline-bars-temperature"></div>
+            </div>
+            <div class="llm-comparison" style="margin-top:0; padding-top:0; border-top:none;">
+              <div class="compare-flow-head">프롬프트별 평균 안정도</div>
+              <div id="baseline-bars-variant"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <style>
+        .mm-summary-pending { font-size: 13px; color: var(--ink-500); padding: 18px; text-align: center; border: 1px dashed var(--line-strong); border-radius: 8px; }
+      </style>
+      <script>
+      (function() {
+        const API = "http://" + window.location.hostname + ":9102/api_prompt_matrix_stability.php";
+        const VARIANTS = ["A", "B", "C"];
+        const TEMPERATURES = [0.0, 0.2];
+        function pct(x) { return x === null || x === undefined ? "—" : Math.round(x * 100) + "%"; }
+        function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+        function renderBars(elId, obj, labelFn) {
+          const el = document.getElementById(elId);
+          el.innerHTML = Object.keys(obj).map(k => {
+            const v = obj[k];
+            const w = v === null ? 0 : Math.round(v * 100);
+            return `<div class="las-row">
+              <span class="las-label" title="${esc(labelFn(k))}">${esc(labelFn(k))}</span>
+              <span class="las-bar-track"><span class="las-bar" style="width:${w}%"></span></span>
+              <span class="las-count">${pct(v)}</span>
+            </div>`;
+          }).join("");
+        }
+
+        async function refreshBaselineSummary() {
+          let data;
+          try {
+            const res = await fetch(API + "?_=" + Date.now());
+            data = await res.json();
+            if (!data.ok) throw new Error(data.error || "알 수 없는 오류");
+          } catch (e) {
+            document.getElementById("baseline-summary-pending").textContent =
+              "실험 매트릭스 리포트 서버(포트 9102)에 연결하지 못했습니다: " + e.message;
+            return;
+          }
+
+          const totalTarget = 6 * (data.target_per_cell || 30);
+          // 목표를 낮춘 뒤에도 이전 목표 기준으로 더 많이 쌓인 칸이 있을 수 있어(예: 30→5로
+          // 낮추기 전에 8회를 채운 칸), 칸별로 목표치에서 자른 뒤 합산한다 — 안 그러면
+          // "이미 다 채웠는데 왜 진행 중이라고 뜨나/왜 30을 넘어서나" 하는 혼선이 생긴다.
+          const totalRuns = Object.values(data.cells || {}).reduce((a, c) => a + Math.min(c.n_runs || 0, c.target || 0), 0);
+          const pendingEl = document.getElementById("baseline-summary-pending");
+          const contentEl = document.getElementById("baseline-summary-content");
+
+          if (totalRuns < totalTarget) {
+            pendingEl.style.display = "";
+            pendingEl.textContent = `실험 진행 중입니다 (${totalRuns} / ${totalTarget}회차) — 6칸이 모두 채워지면 이 자리에 통계 요약이 표시됩니다.`;
+            contentEl.style.display = "none";
+            return;
+          }
+          pendingEl.style.display = "none";
+          contentEl.style.display = "";
+
+          // 6칸 요약 표
+          const info = data.variant_info || {};
+          let html = "<thead><tr><th>프롬프트 \\ Temperature</th>" + TEMPERATURES.map(t => `<th>T=${t.toFixed(1)}</th>`).join("") + "</tr></thead><tbody>";
+          VARIANTS.forEach(v => {
+            html += `<tr><td class="ct-rowhead">${esc((info[v] && info[v].label) || v)}</td>`;
+            TEMPERATURES.forEach(t => {
+              const c = data.cells && data.cells[`${v}_${t.toFixed(1)}`];
+              const s = c ? c.cell_stability_avg : null;
+              const shownRuns = c ? Math.min(c.n_runs, c.target) : 0;
+              html += `<td>${pct(s)} <span style="color:var(--ink-500)">(${shownRuns}회)</span></td>`;
+            });
+            html += "</tr>";
+          });
+          html += "</tbody>";
+          document.getElementById("baseline-cell-table").innerHTML = html;
+
+          renderBars("baseline-bars-temperature", data.by_temperature || {}, k => `T = ${k}`);
+          renderBars("baseline-bars-variant", data.by_variant || {}, k => (info[k] && info[k].label) || k);
+        }
+
+        refreshBaselineSummary();
+        setInterval(refreshBaselineSummary, 30000);
+      })();
+      </script>
+
+      <details class="mm-legacy-details">
+        <summary>이전 단발 실행 UI(1·2번 메뉴, 다중 모델 비교 원형) — 참고용으로만 접어둠</summary>
+        <div class="card-note">아래는 실험 매트릭스 도입 전 있던 화면입니다. 지금은 쓰지 않지만 코드는 남겨뒀습니다(삭제하면 되돌리기 번거로워서). 여기서 실행 버튼을 눌러도 위 실험 매트릭스 데이터와는 섞이지 않습니다(별도 설정 버전 폴더에 저장됩니다).</div>
 
     <section class="card" id="step4-api" data-panel="api">
       <div class="card-head"><h2>OpenAI 기반 군집 레이블링</h2></div>
@@ -1094,8 +1202,8 @@
       </div>
     </section>
 
-    <section class="card" id="step4-local-mm" data-panel="local" style="display:none">
-      <div class="card-head"><h2>로컬 LLM 다중 모델 비교</h2></div>
+    <section class="card" id="step4-local-mm-legacy">
+      <div class="card-head"><h2>로컬 LLM 다중 모델 비교(원형)</h2></div>
       <div class="card-note">모델 카탈로그(<code>local_llm_server.py</code>의 <code>MODEL_CATALOG</code>)에 등록된 모델을 순서대로 돌려, 같은 프롬프트로 군집 라벨링을 시키고 결과를 나란히 비교합니다. 처음 부르는 모델은 다운로드·로드에 시간이 걸릴 수 있습니다(모델 하나당 최대 4분 대기).</div>
 
       <div class="mm-config-block">
@@ -1142,6 +1250,8 @@
         <div id="mm-stability-status" class="llm-status"></div>
         <div id="mm-stability-results"></div>
       </div>
+    </section>
+      </details>
     </section>
   </section>
 
