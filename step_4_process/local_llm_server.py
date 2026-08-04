@@ -163,7 +163,11 @@ def _load_model_sync(name: str):
             dtype=torch.bfloat16 if device == "cuda" else torch.float32,
             device_map=device,
             trust_remote_code=True,
-            attn_implementation="eager",  # flash-attn 미설치 환경 대응
+            # flash-attn은 이 환경(aarch64, GB10)에 사전빌드 wheel이 없어 설치가 무겁다.
+            # 대신 PyTorch 내장 sdpa(scaled dot product attention)를 쓴다 — 별도 설치 없이
+            # eager보다 시퀀스 길이에 따른 시간·메모리 증가폭이 훨씬 작다(eager는 O(n^2)
+            # 어텐션 행렬을 그대로 들고 있어 프롬프트가 길수록 느려지고 메모리도 더 쓴다).
+            attn_implementation="sdpa",
         )
         st.update(model=model, tokenizer=tokenizer, device=device, status="ok", error=None)
         print(f"[local_llm_server] 로드 완료: {name} ({time.time() - t0:.1f}초)")
@@ -250,7 +254,7 @@ def chat_completions(req: ChatRequest):
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         output_ids = model.generate(
             **inputs,
             max_new_tokens=req.max_tokens,
@@ -260,6 +264,15 @@ def chat_completions(req: ChatRequest):
         )
     generated = output_ids[0][inputs["input_ids"].shape[1]:]
     text = tokenizer.decode(generated, skip_special_tokens=True)
+
+    # GB10은 GPU/CPU 메모리가 하나의 통합 풀이라, PyTorch가 "재사용을 위해 캐시로만
+    # 들고 있는" 메모리도 시스템 전체 가용 RAM을 그대로 깎아먹는다. 요청마다 중간
+    # 텐서를 명시적으로 지우고 캐시를 비우지 않으면, 여러 모델을 오가며 비교하는
+    # 이 서버의 특성상(모델을 안 내리고 계속 상주시킴) 메모리가 프로세스 수명 내내
+    # 단조증가만 하다가 결국 스와핑을 유발해 응답이 느려지고 타임아웃이 난다.
+    del output_ids, generated, inputs
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
     return {
         "id": f"local-{int(time.time() * 1000)}",
