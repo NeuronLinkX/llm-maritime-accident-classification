@@ -265,7 +265,7 @@ ksort($clusterLegend);
 
   <section class="card">
     <h2>근거 문장 규칙 준수 리포트</h2>
-    <p class="sub">모든 프롬프트 변형 마지막 줄에 "그 근거를 한국어 2문장 이내로 설명해 주세요"를 공통으로 넣었습니다 — 모델이 이 지시를 실제로 지키는지 모델별로 집계합니다.</p>
+    <p class="sub">모든 프롬프트 변형 마지막 줄에 "그 근거를 한국어 2문장 이내로 설명해 주세요"를 공통으로 넣었습니다. 모델이 이 지시를 실제로 지키는지 모델별로 집계합니다.</p>
     <div id="rationale-report">
       <div class="mm-summary-pending" id="rationale-report-pending">실험이 아직 진행 중입니다 — 6칸이 모두 채워지면 이 자리에 근거 문장 리포트가 표시됩니다.</div>
       <div id="rationale-report-content" style="display:none">
