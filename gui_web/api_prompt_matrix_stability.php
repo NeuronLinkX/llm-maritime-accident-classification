@@ -173,15 +173,22 @@ function count_sentences(string $text): int {
 
 const RATIONALE_MAX_SENTENCES = 2;
 
-/** $runs(어느 범위든)의 rationale 전체를 모델별로 스캔해 "N문장 이내" 규칙 준수율을 낸다. */
+const RATIONALE_EXAMPLES_PER_MODEL = 4;
+
+/** $runs(어느 범위든)의 rationale 전체를 모델별로 스캔해 "N문장 이내" 규칙 준수율을 낸다.
+ * 숫자만으로는 실제로 뭐라고 썼는지 알 수 없다는 피드백을 반영해, 모델별로 실제 rationale
+ * 예시 텍스트도 몇 개 같이 담는다 — 규칙을 어긴 사례(문장 수가 긴 것)를 우선 보여주고,
+ * 남는 자리는 짧은(=규칙을 지킨) 사례로 채워서 대비가 되게 한다. */
 function rationale_compliance_by_model(array $runs): array {
-    $byModel = []; // model => ["n_total"=>, "n_compliant"=>, "sum_sentences"=>, "max_sentences"=>]
+    $byModel = []; // model => ["n_total"=>, "n_compliant"=>, "sum_sentences"=>, "max_sentences"=>, "examples"=>[]]
     foreach ($runs as $run) {
+        $variant = $run["prompt_variant"] ?? null;
+        $temperature = $run["temperature"] ?? null;
         foreach (($run["results"] ?? []) as $r) {
             if (empty($r["ok"]) || empty($r["model"]) || empty($r["clusters"])) continue;
             $model = $r["model"];
             if (!isset($byModel[$model])) {
-                $byModel[$model] = ["n_total" => 0, "n_compliant" => 0, "sum_sentences" => 0, "max_sentences" => 0];
+                $byModel[$model] = ["n_total" => 0, "n_compliant" => 0, "sum_sentences" => 0, "max_sentences" => 0, "examples" => []];
             }
             foreach ($r["clusters"] as $c) {
                 $rationale = (string)($c["rationale"] ?? "");
@@ -191,17 +198,36 @@ function rationale_compliance_by_model(array $runs): array {
                 if ($n <= RATIONALE_MAX_SENTENCES) $byModel[$model]["n_compliant"]++;
                 $byModel[$model]["sum_sentences"] += $n;
                 $byModel[$model]["max_sentences"] = max($byModel[$model]["max_sentences"], $n);
+                $byModel[$model]["examples"][] = [
+                    "prompt_variant" => $variant, "temperature" => $temperature,
+                    "cluster" => $c["cluster"] ?? null, "proposed_label" => $c["proposed_label"] ?? null,
+                    "sentence_count" => $n, "compliant" => $n <= RATIONALE_MAX_SENTENCES,
+                    "rationale" => $rationale,
+                ];
             }
         }
     }
     $out = [];
     foreach ($byModel as $model => $agg) {
+        // 문장 수가 많은(규칙 위반) 순으로 정렬해 위반 사례를 먼저 보여주고, 그 다음
+        // 짧은 사례로 채워 "규칙을 지킨 경우"와 대비되게 한다.
+        $examples = $agg["examples"];
+        usort($examples, fn($a, $b) => $b["sentence_count"] <=> $a["sentence_count"]);
+        $picked = array_slice($examples, 0, (int)floor(RATIONALE_EXAMPLES_PER_MODEL / 2));
+        $shortest = $examples;
+        usort($shortest, fn($a, $b) => $a["sentence_count"] <=> $b["sentence_count"]);
+        foreach ($shortest as $ex) {
+            if (count($picked) >= RATIONALE_EXAMPLES_PER_MODEL) break;
+            if (!in_array($ex, $picked, true)) $picked[] = $ex;
+        }
+
         $out[$model] = [
             "n_total" => $agg["n_total"],
             "n_compliant" => $agg["n_compliant"],
             "compliance_rate" => $agg["n_total"] > 0 ? $agg["n_compliant"] / $agg["n_total"] : null,
             "avg_sentences" => $agg["n_total"] > 0 ? $agg["sum_sentences"] / $agg["n_total"] : null,
             "max_sentences" => $agg["max_sentences"],
+            "examples" => array_values($picked),
         ];
     }
     return $out;
@@ -213,6 +239,40 @@ foreach ($byCell as $key => $runs) {
     [$variant, $tempStr] = explode("_", $key, 2);
     $cells[$key]["prompt_variant"] = $variant;
     $cells[$key]["temperature"] = (float)$tempStr;
+}
+
+// 군집별 6칸(3프롬프트x2온도) 교차비교 — "6개의 경우의 수를 자세히 비교"하고 싶다는
+// 요청에 대응. 군집마다, 모델마다, 6칸 각각에서 어떤 라벨이 나왔고 그게 얼마나
+// 안정적이었는지를 한 줄로 모아, 같은 (모델,군집)이 프롬프트/temperature를 바꿀 때
+// 라벨이 실제로 바뀌는지 한눈에 보게 한다.
+$allClusters = [];
+foreach ($cells as $c) $allClusters = array_merge($allClusters, $c["clusters"]);
+$allClusters = array_values(array_unique($allClusters));
+sort($allClusters);
+$allModels = [];
+foreach ($cells as $c) $allModels = array_merge($allModels, $c["models"]);
+$allModels = array_values(array_unique($allModels));
+sort($allModels);
+
+$clusterComparison = [];
+foreach ($allClusters as $cluster) {
+    $byModel = [];
+    foreach ($allModels as $model) {
+        $row = [];
+        foreach (VARIANTS as $v) {
+            foreach (TEMPERATURES as $t) {
+                $key = cell_key($v, $t);
+                $s = $cells[$key]["stats"][$model][(string)$cluster] ?? null;
+                $row[$key] = $s ? [
+                    "prompt_variant" => $v, "temperature" => $t,
+                    "mode" => $s["mode"], "ratio" => $s["total"] > 0 ? $s["count"] / $s["total"] : null,
+                    "count" => $s["count"], "total" => $s["total"],
+                ] : null;
+            }
+        }
+        $byModel[$model] = $row;
+    }
+    $clusterComparison[(string)$cluster] = $byModel;
 }
 
 // 온도별/프롬프트별 평균 — 6칸을 각각 하나의 관측치로 취급해 단순 평균한다(칸마다
@@ -265,6 +325,7 @@ echo json_encode([
     "rationale_max_sentences" => RATIONALE_MAX_SENTENCES,
     "variant_info" => $variantInfo,
     "cells" => $cells,
+    "cluster_comparison" => $clusterComparison,
     "by_variant" => $byVariant,
     "by_temperature" => $byTemperature,
     "by_variant_cross_model" => $byVariantCrossModel,

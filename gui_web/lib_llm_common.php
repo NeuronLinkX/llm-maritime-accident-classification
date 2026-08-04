@@ -90,9 +90,10 @@ function candidate_labels(): string {
     return $items ? implode(", ", $items) : _DEFAULT_CANDIDATE_LABELS;
 }
 
-// config/prompt_variants.json — STEP4 프롬프트 A/B/C 실험용 오버라이드. candidate_labels는
-// config.json 값을 그대로 공유하고, system_prompt/instruction만 변형별로 바꿔 낀다.
-// 파일이 없거나 variant를 넘기지 않으면 기존 config.json 기본 프롬프트를 그대로 쓴다.
+// config/prompt_variants.json — STEP4 프롬프트 A/B 테스트용 3종 세트(A/B/C). candidate_labels는
+// 세 변형이 공유(config.json 값 그대로)하고, system_prompt/instruction만 변형별로 다르다.
+// 이 파일은 순수 실험용 오버라이드이므로 없어도(또는 깨져도) 기존 동작(config.json 기본 프롬프트)에
+// 전혀 영향을 주지 않는다 — variant 인자를 아무도 넘기지 않으면 이 함수들은 아예 호출되지 않는다.
 const PROMPT_VARIANTS_PATH = __DIR__ . "/../config/prompt_variants.json";
 
 function prompt_variants(): array {
@@ -105,11 +106,14 @@ function prompt_variants(): array {
     return $variants = $decoded;
 }
 
+/** 요청에서 넘어온 prompt_variant 키를 정제한다 — prompt_variants.json에 실제로 존재하는
+ * 키(A/B/C)만 통과시킨다(폴더명에 그대로 쓰이므로 임의 문자열을 허용하면 안 된다). */
 function sanitize_prompt_variant($raw): ?string {
     if (!is_string($raw) || $raw === "") return null;
     return array_key_exists($raw, prompt_variants()) ? $raw : null;
 }
 
+/** 요청에서 넘어온 temperature 오버라이드를 정제한다. 0~2 범위를 벗어나면 null(무시). */
 function sanitize_temperature($raw): ?float {
     if ($raw === null || $raw === "") return null;
     if (!is_numeric($raw)) return null;
@@ -118,22 +122,23 @@ function sanitize_temperature($raw): ?float {
     return $t;
 }
 
+/** $variantKey가 주어지고 prompt_variants.json에 있으면 그 변형의 system_prompt를,
+ * 아니면 config.json(및 _DEFAULT_*)의 기존 기본값을 그대로 쓴다 — 하위 호환. */
 function system_prompt(?string $variantKey = null): string {
     if ($variantKey !== null) {
-        $variant = prompt_variants()[$variantKey] ?? null;
-        if (is_array($variant) && isset($variant["system_prompt"])) {
-            return (string)$variant["system_prompt"];
-        }
+        $v = prompt_variants()[$variantKey] ?? null;
+        if (is_array($v) && isset($v["system_prompt"])) return (string)$v["system_prompt"];
     }
     return app_config()["prompt"]["system_prompt"] ?? _DEFAULT_SYSTEM_PROMPT;
 }
 
-/** instruction이 배열(줄 단위)이면 개행으로 이어붙이고, 문자열이면 그대로 쓴다. */
+/** instruction이 배열(줄 단위)이면 개행으로 이어붙이고, 문자열이면 그대로 쓴다.
+ * $variantKey가 주어지면 prompt_variants.json의 해당 변형을 우선한다(하위 호환은 system_prompt()와 동일). */
 function prompt_instruction(?string $variantKey = null): string {
     if ($variantKey !== null) {
-        $variant = prompt_variants()[$variantKey] ?? null;
-        if (is_array($variant) && isset($variant["instruction"])) {
-            $raw = $variant["instruction"];
+        $v = prompt_variants()[$variantKey] ?? null;
+        if (is_array($v) && isset($v["instruction"])) {
+            $raw = $v["instruction"];
             return is_array($raw) ? implode("\n", array_map("strval", $raw)) : (string)$raw;
         }
     }
@@ -142,7 +147,9 @@ function prompt_instruction(?string $variantKey = null): string {
     if (is_array($raw)) return implode("\n", array_map("strval", $raw));
     return (string)$raw;
 }
-/** api_llm_label.php / api_local_llm_label.php가 공유하는 생성 temperature 기본값. */
+/** api_llm_label.php / api_local_llm_label.php가 공유하는 생성 temperature 기본값.
+ * $override가 주어지면(0~2 범위, sanitize_temperature()로 미리 정제된 값) 그 값을 그대로 쓴다 —
+ * 프롬프트×temperature 실험 매트릭스에서 config.json을 매번 고쳐 쓰지 않고 요청마다 지정하기 위함. */
 function default_temperature(?float $override = null): float {
     if ($override !== null) return $override;
     return (float)(app_config()["generation"]["default_temperature"] ?? _DEFAULT_TEMPERATURE);
@@ -365,6 +372,9 @@ function build_cluster_blocks(?array $samplesOverride = null): ?array {
  * 바꾸고 싶을 때 코드를 고치지 않고 config.json만 수정하면 되게 하기 위함이다.
  * 군집 수·JSON 스키마 등 요청마다 달라지는 구조적인 부분만 여기 코드로 남긴다.
  */
+/** $variantKey가 주어지면 prompt_variants.json의 해당 A/B/C 세트로 system_prompt/instruction을
+ * 바꿔 끼운다 — 후보 라벨(candidate_labels)과 JSON 스키마는 세 변형이 항상 공유한다(공정 비교를
+ * 위해 택소노미·출력 계약은 고정하고 "전문가 관점" 서술만 바꾸는 실험이기 때문). */
 function build_prompt(array $clusterBlocks, ?string $variantKey = null): array {
     $nClusters = count($clusterBlocks);
     $userPrompt = "다음은 한국 해양안전심판원 재결서를 SBERT 임베딩 + K-Means로 군집화한 결과입니다. "
@@ -430,6 +440,12 @@ function parse_clusters_response(string $content): ?array {
  * $samplesOverride를 주면(웹 UI에서 직접 지정한 값) 그 조합 전용 폴더가 생긴다 —
  * 코드의 기본 SAMPLES_PER_CLUSTER와 별개로, 실제로 이 요청에 쓰인 표본 수를
  * 기준으로 버전을 나눠야 실행 기록과 저장 폴더가 항상 일치하기 때문이다.
+ *
+ * $variantKey/$temperature는 프롬프트×temperature 실험 매트릭스 전용 오버라이드다. 이 값들이
+ * null이면(기존 호출부 전부 해당) 폴더명·해시가 이전과 완전히 동일하게 나온다 — 즉 이 실험을
+ * 위해 기존 STEP4 실행 기록 폴더 구조는 전혀 바뀌지 않는다. 값을 주면 해시 계산에도 포함되고
+ * (동일 프롬프트라도 temperature가 다르면 다른 버전으로 취급), 사람이 폴더명만 보고도 어떤
+ * 조합인지 알 수 있게 "_p{A|B|C}_t{temperature}" 접미사가 붙는다.
  */
 function config_version_key(?array $samplesOverride = null, ?string $variantKey = null, ?float $temperature = null): string {
     $spc = $samplesOverride ?? SAMPLES_PER_CLUSTER;
@@ -451,7 +467,8 @@ function config_version_key(?array $samplesOverride = null, ?string $variantKey 
     return $key;
 }
 
-/** config_version_key($samplesOverride)에 대응하는 실행 기록 저장 디렉터리. 없으면 만든다. */
+/** config_version_key($samplesOverride, $variantKey, $temperature)에 대응하는 실행 기록 저장
+ * 디렉터리. 없으면 만든다. */
 function runs_dir_for_config(?array $samplesOverride = null, ?string $variantKey = null, ?float $temperature = null): string {
     $dir = __DIR__ . "/../step_4_process/output/runs/" . config_version_key($samplesOverride, $variantKey, $temperature);
     if (!is_dir($dir)) mkdir($dir, 0775, true);

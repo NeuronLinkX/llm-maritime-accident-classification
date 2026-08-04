@@ -544,7 +544,7 @@
   .step4-tab:hover { color: var(--sea-700); }
   .step4-tab.active { color: var(--sea-700); border-bottom-color: var(--sea-700); }
 
-  /* ---- STEP4: BASELINE 실험 매트릭스 통계 요약(워크트리 9102의 api_prompt_matrix_stability.php에서 fetch) ---- */
+  /* ---- (구 UI 잔여 스타일 — 더는 안 쓰지만 참조하는 곳이 없어 그냥 둠) ---- */
   .mm-legacy-details { margin-top: 20px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
   .mm-legacy-details > summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--ink-500); }
   .mm-legacy-details > summary:hover { color: var(--sea-700); }
@@ -2120,7 +2120,11 @@
     const iframe = document.getElementById("step4-report-iframe");
     if (!openBtn || !modal || !iframe) return;
 
-    const reportUrl = "http://" + window.location.hostname + ":9102/report_step4_matrix.php";
+    // 상대경로 — report_step4_matrix.php와 그 API가 이제 이 파일과 같은 gui_web/에 있으므로
+    // (예전엔 별도 워크트리의 9102 포트에서만 서비스했다), 포트/호스트에 상관없이 항상
+    // "지금 이 페이지를 서비스하는 곳"에서 그대로 열린다. gui_web 폴더째로 옮기거나
+    // 다른 포트로 띄워도 이 링크는 그대로 따라간다.
+    const reportUrl = "report_step4_matrix.php";
     if (newTabLink) newTabLink.href = reportUrl;
 
     function openModal() {

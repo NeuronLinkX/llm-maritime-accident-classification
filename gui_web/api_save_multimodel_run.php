@@ -39,8 +39,11 @@ if (!is_array($results) || !$results) {
 }
 
 $samplesOverride = \LlmCommon\sanitize_samples_override($body["samples_per_cluster"] ?? null);
+// STEP4 프롬프트×temperature 실험 매트릭스 전용(둘 다 선택) — 라벨링 요청 때(api_local_llm_label.php)
+// 쓴 값을 저장 요청에도 그대로 실어 보내야 config_version_key()가 같은 폴더로 계산된다.
 $promptVariant = \LlmCommon\sanitize_prompt_variant($body["prompt_variant"] ?? null);
 $temperatureOverride = \LlmCommon\sanitize_temperature($body["temperature"] ?? null);
+
 $configVersion = \LlmCommon\config_version_key($samplesOverride, $promptVariant, $temperatureOverride);
 $runsDir = \LlmCommon\runs_dir_for_config($samplesOverride, $promptVariant, $temperatureOverride); // 폴더 없으면 여기서 생성
 $RUNS_FILE = $runsDir . "/multimodel_runs.jsonl";

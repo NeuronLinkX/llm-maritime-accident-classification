@@ -47,6 +47,8 @@ if (!parse_url($endpoint) || !preg_match('#^https?://#', $endpoint)) {
 }
 $model = trim((string)($body["model"] ?? ""));
 $samplesOverride = \LlmCommon\sanitize_samples_override($body["samples_per_cluster"] ?? null);
+// STEP4 프롬프트×temperature 실험 매트릭스 전용 오버라이드(둘 다 선택). 생략하면 지금까지처럼
+// config.json의 기본 프롬프트/temperature를 그대로 쓴다(하위 호환) — lib_llm_common.php 참고.
 $promptVariant = \LlmCommon\sanitize_prompt_variant($body["prompt_variant"] ?? null);
 $temperatureOverride = \LlmCommon\sanitize_temperature($body["temperature"] ?? null);
 
