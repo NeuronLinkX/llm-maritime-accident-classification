@@ -45,6 +45,9 @@ DEFAULT_BASE_URL = "http://127.0.0.1:9101"
 DEFAULT_ENDPOINT = "http://localhost:8500/v1/chat/completions"
 MODEL_LOAD_TIMEOUT_SEC = 280
 MODEL_LOAD_POLL_SEC = 4
+LABEL_TIMEOUT_SEC = 420
+LABEL_RETRIES = 3
+RETRY_SLEEP_SEC = 4
 VARIANTS = ["A", "B", "C"]
 TEMPERATURES = [0.0, 0.2]
 
@@ -54,11 +57,42 @@ def http_get(url: str, timeout: int = 30) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def http_post(url: str, payload: dict, timeout: int = 220) -> dict:
+def http_post(url: str, payload: dict, timeout: int = LABEL_TIMEOUT_SEC) -> dict:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+def describe_http_error(exc: urllib.error.HTTPError) -> str:
+    try:
+        body = exc.read().decode("utf-8", "replace").strip()
+    except Exception:
+        body = ""
+    if body:
+        return f"HTTP {exc.code}: {body}"
+    return f"HTTP {exc.code}: {exc.reason}"
+
+
+def label_with_retries(base_url: str, endpoint: str, model: str, variant: str, temperature: float) -> dict:
+    payload = {
+        "endpoint": endpoint,
+        "model": model,
+        "prompt_variant": variant,
+        "temperature": temperature,
+    }
+    last_exc = None
+    for attempt in range(1, LABEL_RETRIES + 1):
+        try:
+            return http_post(f"{base_url}/api_local_llm_label.php", payload, timeout=LABEL_TIMEOUT_SEC)
+        except urllib.error.HTTPError as exc:
+            last_exc = RuntimeError(describe_http_error(exc))
+        except Exception as exc:
+            last_exc = exc
+        if attempt < LABEL_RETRIES:
+            print(f"    - {model} 재시도 {attempt}/{LABEL_RETRIES - 1} 실패: {last_exc} — {RETRY_SLEEP_SEC}초 뒤 재시도", flush=True)
+            time.sleep(RETRY_SLEEP_SEC)
+    raise last_exc if last_exc is not None else RuntimeError(f"{model} 라벨링 요청 실패")
 
 
 def cell_config_version(base_url: str, variant: str, temperature: float) -> str:
@@ -118,10 +152,7 @@ def run_one_pass(base_url: str, endpoint: str, exclude_models: list[str], varian
             print(f"    - {mid} 로드 대기…", flush=True)
             wait_for_model(base_url, endpoint, mid)
             print(f"    - {mid} 라벨링 요청 중… (variant={variant}, T={temperature})", flush=True)
-            data = http_post(f"{base_url}/api_local_llm_label.php", {
-                "endpoint": endpoint, "model": mid,
-                "prompt_variant": variant, "temperature": temperature,
-            })
+            data = label_with_retries(base_url, endpoint, mid, variant, temperature)
             if data.get("ok"):
                 results.append({"model": mid, "ok": True, "clusters": data["clusters"]})
                 print(f"    - {mid} 완료 (군집 {len(data['clusters'])}개)", flush=True)
