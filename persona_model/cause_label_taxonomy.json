@@ -1,0 +1,166 @@
+{
+  "version": "1.0.0",
+  "status": "INITIAL_TAXONOMY_REQUIRES_EXPERT_REVIEW",
+  "labels": [
+    {
+      "label_code": "HF_LOOKOUT_FAILURE",
+      "label_name_ko": "경계 소홀",
+      "cause_category": "HUMAN_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "HF_DELAYED_DECISION",
+      "label_name_ko": "의사결정 지연",
+      "cause_category": "HUMAN_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "HF_FATIGUE",
+      "label_name_ko": "피로",
+      "cause_category": "HUMAN_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "HF_INADEQUATE_MANEUVER",
+      "label_name_ko": "부적절한 조선",
+      "cause_category": "HUMAN_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "CF_COMMUNICATION_FAILURE",
+      "label_name_ko": "의사소통 실패",
+      "cause_category": "COMMUNICATION_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "TF_ENGINE_FAILURE",
+      "label_name_ko": "기관 고장",
+      "cause_category": "TECHNICAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "TF_STEERING_FAILURE",
+      "label_name_ko": "조타장치 고장",
+      "cause_category": "TECHNICAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "MF_INADEQUATE_MAINTENANCE",
+      "label_name_ko": "정비 미흡",
+      "cause_category": "MAINTENANCE_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "EF_RESTRICTED_VISIBILITY",
+      "label_name_ko": "제한시계",
+      "cause_category": "ENVIRONMENTAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "EF_STRONG_CURRENT",
+      "label_name_ko": "강한 조류",
+      "cause_category": "ENVIRONMENTAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "OF_INADEQUATE_TRAINING",
+      "label_name_ko": "교육 미흡",
+      "cause_category": "ORGANIZATIONAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "OF_INADEQUATE_SAFETY_MANAGEMENT",
+      "label_name_ko": "안전관리 미흡",
+      "cause_category": "ORGANIZATIONAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "PF_NAVIGATION_RULE_VIOLATION",
+      "label_name_ko": "항법상 의무 위반",
+      "cause_category": "PROCEDURAL_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "DF_ALARM_NOT_ACTIVATED",
+      "label_name_ko": "경보 미작동",
+      "cause_category": "DEFENSE_SYSTEM_FAILURE",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "AF_DELAYED_EMERGENCY_RESPONSE",
+      "label_name_ko": "비상대응 지연",
+      "cause_category": "CONSEQUENCE_AGGRAVATING_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    },
+    {
+      "label_code": "UF_INSUFFICIENT_INFORMATION",
+      "label_name_ko": "정보 부족",
+      "cause_category": "UNKNOWN_FACTOR",
+      "definition": "전문가 검토를 거쳐 확정할 초기 정의",
+      "inclusion_criteria": [],
+      "exclusion_criteria": [],
+      "related_legal_sources": [],
+      "version": "1.0"
+    }
+  ]
+}

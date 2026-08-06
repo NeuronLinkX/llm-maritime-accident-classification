@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/kmst/persona-01.schema.json",
+  "title": "KMST-P01 사실·증거 구조화 결과",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_metadata",
+    "actors",
+    "vessels",
+    "environment",
+    "timeline",
+    "facts",
+    "evidence",
+    "evidence_conflicts",
+    "missing_information",
+    "privacy_actions",
+    "handoff_status"
+  ],
+  "properties": {
+    "case_metadata": {
+      "type": "object"
+    },
+    "actors": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "vessels": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "environment": {
+      "type": "object"
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidence_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "missing_information": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "privacy_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "handoff_status": {
+      "enum": [
+        "READY_FOR_PERSONA_2",
+        "RETURN_FOR_CORRECTION"
+      ]
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "status": "EXACT",
+  "generated_at": "2026-08-06T07:19:26.338949+00:00",
+  "tokenizer_path": "/home/jiwoo/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/40c069824f4251a91eefaf281ebe4c544efd3e18",
+  "tokenizer_model": "Qwen3-14B",
+  "prompt_tokens": 10868,
+  "corpus_tokens": 120415,
+  "total_source_tokens": 131283,
+  "note": "전체 소스 토큰 수이며 한 번에 모델에 입력되는 토큰 수가 아닙니다. 페르소나별 입력은 BM25로 선택한 법령 청크만 포함합니다.",
+  "documents": [
+    {
+      "document_id": "DOC-01",
+      "file_name": "행정규칙_해양안전심판원 정보공개규정.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 4128,
+      "tokens": 2756
+    },
+    {
+      "document_id": "DOC-02",
+      "file_name": "행정규칙_해양사고관련자 징계량 결정 지침.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 2773,
+      "tokens": 1918
+    },
+    {
+      "document_id": "DOC-03",
+      "file_name": "행정규칙_해양안전심판원 심판관,조사관 등 연수교육 운영 지침.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 1711,
+      "tokens": 1208
+    },
+    {
+      "document_id": "DOC-04",
+      "file_name": "행정규칙_해양사고의 조사 및 심판에 관한 법률의 적용대상이 아닌 수상레저기구.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 929,
+      "tokens": 680
+    },
+    {
+      "document_id": "DOC-05",
+      "file_name": "행정규칙_해양사고의 조사 및 심판에 관한 법률에 따른 과태료의 가중처분에 관한 세부 지침.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 862,
+      "tokens": 611
+    },
+    {
+      "document_id": "DOC-06",
+      "file_name": "행정규칙_해양사고의 조사 및 심판에 관한 사무 처리 요령.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 65705,
+      "tokens": 46154
+    },
+    {
+      "document_id": "DOC-07",
+      "file_name": "행정규칙_해양사고 특별조사부 운영지침.md",
+      "document_type": "ADMINISTRATIVE_RULE",
+      "characters": 15368,
+      "tokens": 9916
+    },
+    {
+      "document_id": "DOC-08",
+      "file_name": "법령_해양사고의 조사 및 심판에 관한 법률 시행규칙.md",
+      "document_type": "ENFORCEMENT_RULE",
+      "characters": 9645,
+      "tokens": 6836
+    },
+    {
+      "document_id": "DOC-09",
+      "file_name": "법령_해양사고의 조사 및 심판에 관한 법률 시행령.md",
+      "document_type": "ENFORCEMENT_DECREE",
+      "characters": 27508,
+      "tokens": 19790
+    },
+    {
+      "document_id": "DOC-10",
+      "file_name": "법령_해양사고의 조사 및 심판에 관한 법률.md",
+      "document_type": "LAW",
+      "characters": 41283,
+      "tokens": 29249
+    },
+    {
+      "document_id": "DOC-11",
+      "file_name": "국제기준_IMO 해양사고 조사협약(CI Code) 개요.md",
+      "document_type": "INTERNATIONAL_GUIDANCE",
+      "characters": 3430,
+      "tokens": 1297
+    }
+  ]
+}

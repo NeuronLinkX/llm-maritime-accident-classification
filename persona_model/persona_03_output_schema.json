@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/kmst/persona-03.schema.json",
+  "title": "KMST-P03 원인기여도·레이블링 품질관리 결과",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "official_ratio",
+    "cause_labels",
+    "incident_labels",
+    "quality_assurance"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string"
+    },
+    "official_ratio": {
+      "type": "object",
+      "required": [
+        "present",
+        "subjects"
+      ],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "source_excerpt": {
+          "type": "string"
+        },
+        "source_location": {
+          "type": "string"
+        }
+      }
+    },
+    "cause_labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "cause_id",
+          "label_code",
+          "official_ratio",
+          "analytic_contribution_score",
+          "confidence",
+          "human_review_required",
+          "review_status"
+        ],
+        "properties": {
+          "cause_id": {
+            "type": "string"
+          },
+          "label_code": {
+            "type": "string"
+          },
+          "official_ratio": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "analytic_contribution_score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "confidence": {
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "NOT_SCORABLE"
+            ]
+          },
+          "human_review_required": {
+            "const": true
+          },
+          "review_status": {
+            "const": "GOLDSET_CANDIDATE"
+          }
+        }
+      }
+    },
+    "incident_labels": {
+      "type": "object"
+    },
+    "quality_assurance": {
+      "type": "object"
+    }
+  }
+}

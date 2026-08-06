@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/kmst/persona-02.schema.json",
+  "title": "KMST-P02 사고원인·법령 정합성 검증 결과",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "causal_graph",
+    "causes",
+    "alternative_causes",
+    "legal_conflicts",
+    "unresolved_issues",
+    "handoff_status"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string"
+    },
+    "causal_graph": {
+      "type": "object"
+    },
+    "causes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "alternative_causes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "legal_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "unresolved_issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "handoff_status": {
+      "enum": [
+        "READY_FOR_PERSONA_3",
+        "RETURN_FOR_CORRECTION"
+      ]
+    }
+  }
+}
