@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.local/kmst/persona-01.schema.json",
   "title": "KMST-P01 사실·증거 구조화 결과",
+  "_note": "facts[].fact_status, evidence[].evidence_type, confidence/reliability enum은 persona/src/prompt.txt 10.6/10.7절(마스터 프롬프트)에 정의된 고정 분류체계를 그대로 반영한 것 — 원래 이 스키마에는 빠져있어 모델이 임의 값을 냈다.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,6 +18,42 @@
     "privacy_actions",
     "handoff_status"
   ],
+  "$defs": {
+    "fact_status": {
+      "enum": [
+        "ESTABLISHED_BY_DECISION",
+        "OBJECTIVE_RECORD",
+        "PARTY_STATEMENT",
+        "WITNESS_STATEMENT",
+        "EXPERT_OPINION",
+        "MODEL_INFERENCE",
+        "DISPUTED",
+        "UNVERIFIED"
+      ]
+    },
+    "evidence_type": {
+      "enum": [
+        "AIS",
+        "VDR",
+        "RADAR",
+        "ECDIS",
+        "GPS",
+        "CCTV",
+        "NAVIGATION_LOG",
+        "ENGINE_LOG",
+        "WEATHER_RECORD",
+        "RADIO_COMMUNICATION",
+        "INSPECTION_RECORD",
+        "PHOTOGRAPH",
+        "PHYSICAL_EVIDENCE",
+        "PARTY_STATEMENT",
+        "WITNESS_STATEMENT",
+        "EXPERT_REPORT",
+        "DECISION_FINDING",
+        "OTHER"
+      ]
+    }
+  },
   "properties": {
     "case_metadata": {
       "type": "object"
@@ -39,19 +76,51 @@
     "timeline": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": ["event_id", "event", "time_precision"],
+        "properties": {
+          "event_id": { "type": "string" },
+          "time": { "type": "string" },
+          "time_precision": { "enum": ["EXACT", "APPROXIMATE", "UNKNOWN"] },
+          "actor_ids": { "type": "array", "items": { "type": "string" } },
+          "event": { "type": "string" },
+          "fact_status": { "$ref": "#/$defs/fact_status" },
+          "evidence_ids": { "type": "array", "items": { "type": "string" } },
+          "source_location": { "type": "string" }
+        }
       }
     },
     "facts": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": ["fact_id", "fact_text", "fact_status", "confidence"],
+        "properties": {
+          "fact_id": { "type": "string" },
+          "fact_text": { "type": "string" },
+          "fact_status": { "$ref": "#/$defs/fact_status" },
+          "actor_ids": { "type": "array", "items": { "type": "string" } },
+          "evidence_ids": { "type": "array", "items": { "type": "string" } },
+          "source_excerpt": { "type": "string" },
+          "source_location": { "type": "string" },
+          "confidence": { "enum": ["HIGH", "MEDIUM", "LOW"] }
+        }
       }
     },
     "evidence": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": ["evidence_id", "evidence_type", "description", "reliability"],
+        "properties": {
+          "evidence_id": { "type": "string" },
+          "evidence_type": { "$ref": "#/$defs/evidence_type" },
+          "description": { "type": "string" },
+          "supports_fact_ids": { "type": "array", "items": { "type": "string" } },
+          "contradicts_fact_ids": { "type": "array", "items": { "type": "string" } },
+          "source_location": { "type": "string" },
+          "reliability": { "enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"] }
+        }
       }
     },
     "evidence_conflicts": {

@@ -30,6 +30,9 @@ gui_web/report.html
 # === STEP 4: 로컬 LLM 다중 모델 비교 실행 기록(환경별로 계속 쌓이는 로그성 데이터) ===
 step_4_process/output/
 step_4_process/models/
+step_4_process/.venv/
+step_4_process/.step4_run.lock
+outputs/
 .venv-mac/
 
 # === 배포용 스테이징 복사본 ===

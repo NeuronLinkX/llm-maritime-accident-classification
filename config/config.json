@@ -1,0 +1,59 @@
+{
+  "experiment": {
+    "name": "step4_persona_ablation_cluster",
+    "decoding_mode": "greedy",
+    "note": "분석 단위는 개별 재결서가 아니라 STEP3 K-means 군집(5개)이다. persona_01/02/03은 병렬 3-rater가 아니라 P01(군집 패턴 구조화)->P02(대표 원인 검증)->P03(KMST 레이블 확정) 순차 체인이다. 조건은 identity_on/identity_off 2개뿐이며, 각 조건마다 군집당 체인 3단계를 1회씩 실행한다 (2 x 3 = 6 호출/군집, 최종 레이블 행은 stage=persona_03에서만 나온다).",
+    "personas": ["persona_01", "persona_02", "persona_03"],
+    "chain_order": ["persona_01", "persona_02", "persona_03"],
+    "conditions": [
+      { "name": "identity_on",  "use_persona_identity": true  },
+      { "name": "identity_off", "use_persona_identity": false }
+    ]
+  },
+  "model": {
+    "id": "Qwen3-14B",
+    "path": "/home/jiwoo/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/40c069824f4251a91eefaf281ebe4c544efd3e18",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "max_model_len": 32768,
+    "gpu_memory_utilization": 0.35,
+    "gpu_memory_utilization_note": "이 DGX Spark(통합메모리)는 다른 사용자(jeon)의 별도 docker-compose vLLM 스택(Qwen3-30B-A3B-FP8, 0.50 사용 중)과 GPU를 공유한다. 0.85는 그 프로세스와 충돌(OOM)한다 — 남은 여유 안에서 안전하게 돌아가도록 0.35로 낮췄다. 군집 단위는 호출 수가 30회뿐이라 어차피 오래 안 걸린다.",
+    "local_files_only": true,
+    "enable_thinking": false
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": -1,
+    "max_new_tokens": 4096,
+    "max_new_tokens_note": "실제 관측값 기반 산정: persona_01의 정상 완주 completion_tokens는 최대 3461, 평균 2179(반복루프에 빠졌던 cluster_3 제외). 여기에 ~20% 여유를 더해 4096으로 설정. 2048은 부족했고(잘림 다발), 6144는 반복루프 문제를 안 고친 채로만 올려서 근본 해결이 아니었다 — repetition_penalty를 같이 올려 루프 자체를 억제하는 쪽으로 전환.",
+    "repetition_penalty": 1.15,
+    "repetition_penalty_note": "1.0(중립)에서는 cluster_3(대표문장 15개, 가장 큰 군집)의 persona_01이 EVIDENCE_604, EVIDENCE_605...EVIDENCE_621처럼 존재하지 않는 증거 ID를 무한 나열하는 반복루프에 빠져 6144 토큰을 다 쓰고도 완성 못 함. 1.15로도 같은 루프(EVIDENCE_343...367)가 재현돼 부족했던 것으로 확인됨.",
+    "frequency_penalty": 0.4,
+    "frequency_penalty_note": "repetition_penalty(유무만 보는 페널티)만으로는 cluster_3의 순차 ID 나열 루프가 안 잡혀서 추가. frequency_penalty는 이미 나온 횟수에 비례해 누적 페널티를 줘서 'EVIDENCE_NNN을 계속 늘려가며 반복'하는 패턴에 더 직접적으로 작동한다. 프롬프트에도 'ID 배열은 항목당 최대 5개, 두 자릿수 넘으면 오류'라는 명시적 지시를 함께 추가함(prompt_builder.cluster_mode_preamble)."
+  },
+  "determinism_check": {
+    "sample_size": 20,
+    "note": "표본 min(sample_size, 군집 수)건을 2회 실행하여 출력이 바이트 단위로 일치하는지 확인. 군집이 5개뿐이라 표본은 5로 자동 축소된다. 불일치 시 하드웨어.배치 비결정성으로 기록하고 실험을 중단하지 않되 리포트에 명시"
+  },
+  "paths": {
+    "persona_dir": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/persona_model",
+    "gold_set": null,
+    "output_root": "./outputs/step4_persona_ablation"
+  },
+  "cluster": {
+    "note": "구 STEP4(gui_web/lib_llm_common.php build_cluster_blocks())와 동일한 방식 — 군집별 문서 id 목록 앞에서부터 N개를 뽑아 그 문서의 embedding_text를 대표 문장으로 쓴다.",
+    "paths": {
+      "clusters_csv": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_3_process/output/clusters.csv",
+      "cluster_keywords_csv": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_3_process/output/cluster_keywords.csv",
+      "step1_jsonl": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_2_process/from_step1/step1_dataset.jsonl"
+    },
+    "samples_per_cluster": { "0": 8, "1": 10, "2": 5, "3": 15, "4": 3 },
+    "samples_per_cluster_default": 5,
+    "sample_text_maxlen": 300
+  },
+  "validation": {
+    "retry_on_parse_error": 0,
+    "retry_on_parse_error_note": "greedy에서는 동일 프롬프트 재시도가 동일 출력을 내므로 기본값은 0(재시도 없이 실패로 기록). 1로 켤 경우 프롬프트에 교정 지시를 덧붙여 재요청하며 해당 케이스는 parse_retry 플래그로 표시되어 주 분석에서 제외 가능해야 한다."
+  }
+}

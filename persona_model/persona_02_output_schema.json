@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.local/kmst/persona-02.schema.json",
   "title": "KMST-P02 사고원인·법령 정합성 검증 결과",
+  "_note": "causes[].cause_category, causal_level, support_level enum은 persona/src/prompt.txt 11.5/11.7절(마스터 프롬프트)에 정의된 고정 분류체계를 그대로 반영한 것 — 원래 이 스키마에는 빠져있어 모델이 임의 값을 냈다.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -23,7 +24,51 @@
     "causes": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": ["cause_id", "cause_name", "cause_category", "causal_level", "support_level"],
+        "properties": {
+          "cause_id": { "type": "string" },
+          "cause_name": { "type": "string" },
+          "cause_category": {
+            "enum": [
+              "HUMAN_FACTOR",
+              "TECHNICAL_FACTOR",
+              "ENVIRONMENTAL_FACTOR",
+              "ORGANIZATIONAL_FACTOR",
+              "PROCEDURAL_FACTOR",
+              "REGULATORY_FACTOR",
+              "COMMUNICATION_FACTOR",
+              "MAINTENANCE_FACTOR",
+              "DEFENSE_SYSTEM_FAILURE",
+              "UNKNOWN_FACTOR"
+            ]
+          },
+          "causal_level": {
+            "enum": [
+              "DIRECT_CAUSE",
+              "CONTRIBUTING_CAUSE",
+              "BACKGROUND_FACTOR",
+              "CONSEQUENCE_AGGRAVATING_FACTOR",
+              "UNRELATED_FACTOR",
+              "UNDETERMINED"
+            ]
+          },
+          "actor_ids": { "type": "array", "items": { "type": "string" } },
+          "affected_event_ids": { "type": "array", "items": { "type": "string" } },
+          "fact_ids": { "type": "array", "items": { "type": "string" } },
+          "evidence_ids": { "type": "array", "items": { "type": "string" } },
+          "causal_path": { "type": "string" },
+          "counterfactual_assessment": { "type": "string" },
+          "counter_evidence": { "type": "array", "items": { "type": "string" } },
+          "explicitly_stated_in_decision": { "type": "boolean" },
+          "source_excerpt": { "type": "string" },
+          "source_location": { "type": "string" },
+          "legal_basis": { "type": "array", "items": { "type": "object" } },
+          "international_guidance": { "type": "array", "items": { "type": "object" } },
+          "support_level": { "enum": ["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"] },
+          "uncertainty": { "type": "string" },
+          "legal_review_required": { "type": "boolean" }
+        }
       }
     },
     "alternative_causes": {
