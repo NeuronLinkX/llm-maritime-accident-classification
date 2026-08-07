@@ -7,6 +7,8 @@ import re
 import time
 from dataclasses import dataclass
 
+from step4 import config as config_mod
+
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
@@ -63,15 +65,18 @@ class VLLMBackend:
         )
         self.logger.info("모델 로드 완료")
 
-    def _build_sampling_params(self):
+    def _build_sampling_params(self, overrides: dict | None = None, schema: dict | None = None):
         from vllm import SamplingParams
 
-        gen = self.generation_cfg
-        return SamplingParams(
+        gen = self.generation_cfg if not overrides else {**self.generation_cfg, **overrides}
+        kwargs = dict(
             temperature=gen["temperature"],
             top_p=gen["top_p"],
             top_k=gen["top_k"],
-            seed=None,
+            # 기본 실행은 greedy(temperature=0)라 seed가 의미 없어 항상 None이었다. 반복루프
+            # 재시도의 후반 단계에서는 temperature>0 + 고정 seed로 "같은 실패를 결정적으로
+            # 반복하지 않으면서도 재현 가능한" 시도를 하므로, overrides로 넘어오면 그대로 쓴다.
+            seed=gen.get("seed"),
             max_tokens=gen["max_new_tokens"],
             repetition_penalty=gen["repetition_penalty"],
             # frequency_penalty: 이미 나온 횟수에 비례해 누적 페널티를 준다 — "EVIDENCE_343,
@@ -79,21 +84,41 @@ class VLLMBackend:
             # repetition_penalty(유무만 봄)보다 훨씬 직접적으로 억제한다.
             frequency_penalty=gen.get("frequency_penalty", 0.0),
         )
+        if schema is not None:
+            # 구조화 출력(grammar-constrained decoding) — 매 토큰마다 스키마를 어기는 토큰
+            # 자체를 샘플링 후보에서 제외한다. repetition_penalty/frequency_penalty는 허용된
+            # 후보 안에서만 작동하므로, 이 제약이 있으면 두 페널티가 아무리 누적되어도
+            # 따옴표·콜론·필수 키처럼 스키마상 반드시 있어야 하는 토큰은 계속 강제된다 —
+            # 실측된 "생성 후반부에 JSON 문법이 스스로 무너지는" 실패의 근본 원인(자유 생성 +
+            # 누적 페널티가 반복 토큰을 억제)을 프롬프트 지시가 아니라 디코딩 제약으로 막는다.
+            from vllm.sampling_params import StructuredOutputsParams
+
+            kwargs["structured_outputs"] = StructuredOutputsParams(json=schema)
+        return SamplingParams(**kwargs)
 
     def _render_prompt(self, system_prompt: str, user_prompt: str) -> str:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+        template_kwargs = {}
+        if config_mod.infer_model_family(self.model_cfg) == "qwen3":
+            # enable_thinking은 Qwen3 하이브리드 사고모드 전용 chat-template 인자다.
+            # 다른 모델의 템플릿에 넘기면 그냥 무시되긴 하지만, 의미 없는 인자를 넘기지
+            # 않도록 Qwen3일 때만 전달한다.
+            template_kwargs["enable_thinking"] = self.model_cfg.get("enable_thinking", False)
         return self._tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
-            enable_thinking=self.model_cfg.get("enable_thinking", False),
+            **template_kwargs,
         )
 
     def generate_batch(
-        self, pairs: list[tuple[str, str]]
+        self,
+        pairs: list[tuple[str, str]],
+        sampling_overrides: dict | None = None,
+        schema: dict | None = None,
     ) -> list[GenerationResult]:
         """pairs: [(system_prompt, user_prompt), ...].
 
@@ -101,11 +126,17 @@ class VLLMBackend:
         결정성 확인에서 byte_identical_rate=0.0이 나온 원인이 배치 구성에 따라 달라지는
         부동소수점 연산 순서였다. 한 번에 하나씩만 llm.generate()에 넣어 배치 구성
         자체가 항상 동일(크기 1)하도록 만든다.
+
+        sampling_overrides: 이 호출에 한해서만 generation_cfg 일부를 덮어쓴다(예: 특정
+        군집의 반복루프 재시도에서만 frequency_penalty를 국소적으로 올릴 때). config의
+        기본 생성 파라미터 자체는 건드리지 않으므로 다른 호출에는 영향이 없다.
+        schema: 전달하면 이 호출의 모든 생성이 해당 JSON Schema를 반드시 만족하도록
+        디코딩 자체를 제약한다(구조화 출력). None이면 기존처럼 제약 없이 자유 생성한다.
         """
         if self._llm is None:
             raise RuntimeError("backend.load()를 먼저 호출해야 합니다.")
 
-        sampling_params = self._build_sampling_params()
+        sampling_params = self._build_sampling_params(sampling_overrides, schema=schema)
         results: list[GenerationResult] = []
         for sp, up in pairs:
             prompt = self._render_prompt(sp, up)

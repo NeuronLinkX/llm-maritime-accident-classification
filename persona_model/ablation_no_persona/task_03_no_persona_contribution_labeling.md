@@ -1,3 +1,6 @@
+> ℹ️ 이 문서는 `config/config_document_pair.json`(document_pair 비교 모드)에서
+> identity_off로 실제 사용됩니다. 자세한 내용은 [README.md](README.md) 참고.
+
 # NOPERSONA-03 원인기여도·레이블링 품질관리 작업 지침
 
 이 문서는 `persona_03_contribution_labeling_qa.md`(KMST-P03)와 대조군(ablation) 관계에 있다. 법령 기반, 입력·출력 계약, 수행 지침, 금지사항, JSON 스키마는 완전히 동일하며, 페르소나 정체성·역할극 문장만 제거하고 모든 지시를 명령문으로 서술한다.

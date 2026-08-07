@@ -32,6 +32,17 @@ step_4_process/output/
 step_4_process/models/
 step_4_process/.venv/
 step_4_process/.step4_run.lock
+
+step4/*.md
+step4/*.log
+step4/*.json
+step4/*.csv
+step4/*.lock
+step4/*.pptx
+step4/*.docx
+
+mysql_export/*
+
 outputs/
 .venv-mac/
 

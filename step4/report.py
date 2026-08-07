@@ -167,12 +167,25 @@ def generate_report(
     lines.append("")
 
     lines.append("## 5. 레이블 전이 분석 (identity_on -> identity_off)\n")
+    lines.append(
+        "**왜 두 조건의 레이블이 같거나 다른가**: identity_on/off는 `persona_0N.md` 한 문서에서 "
+        "정체성 선언 문장(\"당신은 KMST-P0N이다\") 한 줄만 넣고 뺀 것이며, 그 외 법령 검색 컨텍스트·"
+        "군집 대표문장·JSON 스키마·디코딩 파라미터는 매 실행마다 `step4/ablation.py`가 자동 검증할 "
+        "만큼 완전히 동일하다. 즉 두 조건이 받는 증거 자체는 같으므로, 증거가 하나의 원인을 뚜렷하게 "
+        "가리키는 군집은 정체성 문구 유무와 무관하게 같은 레이블로 수렴하는 것이 greedy(temperature=0) "
+        "디코딩에서는 자연스러운 결과다. 레이블이 달라진 군집은 정체성 프레이밍이 실제로 판단에 영향을 "
+        "준 사례로 해석할 수 있다 — 아래 표의 대각선(동일) 대 비대각선(변경) 비율 자체가 이 비교실험의 "
+        "핵심 결과다.\n"
+    )
     if has_trans_fig:
         lines.append("![transition](figures/root_cause_primary_transition.png)\n")
     transition = p03.get("root_cause_primary_transition_on_to_off")
     if transition:
-        lines.append("| on \\ off | " + " | ".join(sorted({b for row in transition.values() for b in row})) + " |")
         off_cats = sorted({b for row in transition.values() for b in row})
+        n_same = sum(transition.get(a, {}).get(a, 0) for a in transition)
+        n_total = sum(sum(row.values()) for row in transition.values())
+        lines.append(f"- 동일(대각선): {n_same}/{n_total}건, 변경(비대각선): {n_total - n_same}/{n_total}건\n")
+        lines.append("| on \\ off | " + " | ".join(off_cats) + " |")
         lines.append("|" + "---|" * (len(off_cats) + 1))
         for a in sorted(transition.keys()):
             row = [str(transition[a].get(b, 0)) for b in off_cats]
@@ -229,6 +242,22 @@ def generate_report(
     identity_on_tokens = manifest.get("identity_prompt_token_diff")
     if identity_on_tokens:
         lines.append(f"- identity_on/off 프롬프트 토큰 수 차이: {identity_on_tokens}")
+    repetition_retry_cases = manifest.get("repetition_retry_cases") or []
+    if repetition_retry_cases:
+        n_succeeded = sum(1 for c in repetition_retry_cases if c.get("succeeded"))
+        n_exhausted = sum(
+            1 for c in repetition_retry_cases if not c.get("succeeded")
+        )
+        lines.append(
+            f"- **결정성 예외**: 반복루프 의심 실패 {len(repetition_retry_cases)}건에 대해 "
+            "frequency_penalty/repetition_penalty를 단계적으로 올리고(2단계부터는 temperature>0도 "
+            f"섞어) 성공할 때까지 해당 호출 1건만 재시도했다(성공 {n_succeeded}건, "
+            f"{f'전체 단계 소진 후에도 실패 {n_exhausted}건, ' if n_exhausted else ''}"
+            "각 케이스의 시도 횟수는 attempts_used 참고). temperature>0로 생성된 케이스는 "
+            "config.generation의 기본값(greedy, temperature=0)과 다른 파라미터로 생성되었으므로 "
+            "100% 결정성 전제에서 벗어난 의도적 예외로 간주해야 한다: "
+            f"{[{'doc_id': c['doc_id'], 'stage': c['stage'], 'condition': c['condition'], 'succeeded': c['succeeded'], 'attempts_used': c.get('attempts_used')} for c in repetition_retry_cases]}"
+        )
     lines.append("")
 
     lines.append("## 9. 재현 정보\n")

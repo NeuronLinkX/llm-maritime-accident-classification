@@ -32,15 +32,31 @@ UNIT_LABEL = "군집"
 def _prepare(config: Config, logger: logging.Logger):
     persona_dir = config.data["paths"]["persona_dir"]
     diff_dir = config.output_root / "artifacts" / "ablation_diff"
+    comparison_mode = config.data["experiment"].get("comparison_mode", "identity_marker")
 
     persona_assets = assets_mod.discover_persona_assets(persona_dir, logger)
     schemas = {a.persona_id: json.loads(a.schema_path.read_text(encoding="utf-8")) for a in persona_assets}
 
     stage_prompts = {}
-    for a in persona_assets:
-        stage_prompts[a.persona_id] = prompt_builder.load_stage_prompt(
-            a.md_path, a.persona_id, diff_dir, logger
-        )
+    if comparison_mode == "document_pair":
+        # identity_on/off는 정체성 문장 유무만 다르지만, 이 모드는 처음부터 독립적으로
+        # 작성된 두 문서(persona_0N.md vs ablation_no_persona/task_0N_no_persona_*.md)를
+        # 그대로 on/off로 비교한다 — persona_0N.md 자체는 전혀 건드리지 않는다.
+        no_persona_dir = config.data["paths"]["no_persona_dir"]
+        no_persona_map = assets_mod.discover_no_persona_assets(no_persona_dir, logger)
+        for a in persona_assets:
+            if a.persona_id not in no_persona_map:
+                raise FileNotFoundError(
+                    f"{a.persona_id}에 대응하는 no-persona 문서가 {no_persona_dir}에 없습니다."
+                )
+            stage_prompts[a.persona_id] = prompt_builder.load_document_pair_prompt(
+                a.md_path, no_persona_map[a.persona_id], a.persona_id, logger
+            )
+    else:
+        for a in persona_assets:
+            stage_prompts[a.persona_id] = prompt_builder.load_stage_prompt(
+                a.md_path, a.persona_id, diff_dir, logger
+            )
 
     legal_chunks = legal_retrieval.load_legal_chunks(Path(persona_dir) / "data", logger)
     taxonomy = taxonomy_mod.load_taxonomy(persona_dir, logger)
@@ -81,9 +97,17 @@ def dry_run(config: Config, logger: logging.Logger) -> None:
     for condition in conditions:
         for stage in chain_order:
             print(f"  - condition={condition}, stage={stage}: {unit_count}회 호출 예정")
-    print("ablation diff:")
-    for a in persona_assets:
-        print(f"  - {a.persona_id}: artifacts/ablation_diff/{a.persona_id}.diff 생성 및 검증 완료")
+    comparison_mode = config.data["experiment"].get("comparison_mode", "identity_marker")
+    if comparison_mode == "document_pair":
+        print("문서쌍 비교 (persona_0N.md vs ablation_no_persona/task_0N_no_persona_*.md):")
+        for a in persona_assets:
+            sp = stage_prompts[a.persona_id]
+            same = sp.system_prompt_on.strip() == sp.system_prompt_off.strip()
+            print(f"  - {a.persona_id}: 로드 완료 (on/off 실행용 System Prompt 동일 여부: {same})")
+    else:
+        print("ablation diff:")
+        for a in persona_assets:
+            print(f"  - {a.persona_id}: artifacts/ablation_diff/{a.persona_id}.diff 생성 및 검증 완료")
     print("(--dry-run: 실제 생성은 수행하지 않음)")
 
 
@@ -175,7 +199,12 @@ def _extract_stage_summary(stage: str, parsed: dict | None, known_label_codes: s
     return row
 
 
-def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -> Path:
+def real_run(
+    config: Config,
+    logger: logging.Logger,
+    limit: int | None = None,
+    skip_determinism: bool = False,
+) -> Path:
     started_at = datetime.now(timezone.utc).isoformat()
     t0 = time.time()
 
@@ -196,6 +225,15 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
     unit_count = len(units)
     logger.info("실행 대상 %s 수: %d (limit=%s)", UNIT_LABEL, unit_count, limit)
 
+    model_family = config.model_family
+    append_no_think = model_family == "qwen3"
+    logger.info(
+        "모델 계열 판별: %s (id=%s) — Qwen3 전용 대응(/no_think, repetition_retry)이 %s",
+        model_family,
+        config.data["model"].get("id"),
+        "활성화됩니다" if model_family == "qwen3" else "비활성화됩니다",
+    )
+
     backend = backend_mod.VLLMBackend(config.data["model"], config.data["generation"], logger)
     backend.load()
 
@@ -214,8 +252,23 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
             )
 
     save_failures = []
+    repetition_retry_cases = []
     rows: list[dict] = []
     retry_on_parse_error = config.data["validation"].get("retry_on_parse_error", 0)
+    repetition_retry_cfg = config.data["validation"].get("repetition_retry", {})
+    # 2026-08-07 초반엔 "Qwen3 전용 우회"로 보고 model_family=="qwen3"로 게이팅했었다 —
+    # 근거는 Qwen2.5-14B-Instruct가 persona_01 5/5를 기본 파라미터로 성공한 것이었다.
+    # 하지만 이어진 persona_02/identity_on에서 Qwen2.5도 cluster_0/cluster_1이 동일한
+    # 종류(문법은 안 깨지지만 문자열 내부 공백 반복으로 max_new_tokens 소진)의 반복루프에
+    # 빠지는 것이 실측되어, 이 현상이 Qwen3 고유가 아니라 greedy 디코딩 일반의 약점이라는
+    # 원래 진단이 맞았음이 재확인됐다. 그래서 model_family 게이팅을 제거하고 모델 계열과
+    # 무관하게 config.enabled로만 제어한다 — /no_think, enable_thinking 같은 진짜
+    # Qwen3 아키텍처 전용 항목만 계속 model_family로 게이팅한다.
+    repetition_retry_enabled = repetition_retry_cfg.get("enabled", False)
+    max_new_tokens = config.data["generation"]["max_new_tokens"]
+    repetition_retry_token_threshold = (
+        repetition_retry_cfg.get("completion_token_ratio_threshold", 0.95) * max_new_tokens
+    )
     determinism_pairs: list[tuple[str, str]] | None = None
     determinism_ids: list[str] | None = None
 
@@ -244,7 +297,7 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
                 continue
 
             system_prompt = prompt_builder.build_cluster_system_prompt(
-                stage_prompt, use_identity=use_identity, schema=schema
+                stage_prompt, use_identity=use_identity, schema=schema, append_no_think=append_no_think
             )
             pairs = []
             for unit in pending_units:
@@ -276,20 +329,78 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
             logger.info(
                 "생성 시작: condition=%s stage=%s %s수=%d", condition_name, stage, UNIT_LABEL, len(pending_units)
             )
-            gen_results = backend.generate_batch(pairs)
+            gen_results = backend.generate_batch(pairs, schema=schema)
 
             for unit_idx, (unit, gen) in enumerate(zip(pending_units, gen_results)):
                 parse_result = schema_validate.parse_and_validate(gen.clean_text, schema)
 
                 if not parse_result.schema_valid and retry_on_parse_error:
                     corrective_user_prompt = pairs[unit_idx][1] + "\n\n[SYSTEM_NOTE] 출력은 JSON 객체만 허용된다. 다시 JSON만 출력하라."
-                    retry_gen = backend.generate_batch([(system_prompt, corrective_user_prompt)])[0]
+                    retry_gen = backend.generate_batch([(system_prompt, corrective_user_prompt)], schema=schema)[0]
                     retry_parse = schema_validate.parse_and_validate(retry_gen.clean_text, schema)
                     gen = retry_gen
                     parse_result = retry_parse
                     parse_retry_flag = 1
                 else:
                     parse_retry_flag = 0
+
+                # 반복루프(예: cluster_3/identity_on persona_01이 존재하지 않는 evidence_id를
+                # max_new_tokens까지 무한 나열)로 인한 실패만 국소적으로 재시도한다. 구조화 출력
+                # (backend.py의 structured_outputs)이 JSON 문법 자체는 항상 보장하므로, 예전처럼
+                # 페널티를 올렸을 때 따옴표·콜론이 깨지는 부작용은 이제 걱정할 필요가 없다.
+                # 프롬프트/스키마는 그대로 재사용하므로 페르소나 산출물이나 프롬프트 텍스트는
+                # 전혀 바뀌지 않는다.
+                #
+                # 단계적 강화(escalation ladder): 1회 재시도로도 못 뚫리는 케이스가 실측됐다
+                # (2026-08-07 — Qwen2.5-14B에서도 frequency_penalty=0.6+repetition_penalty=1.3
+                # 재시도가 다시 반복루프로 실패하는 사례 확인). validation.repetition_retry.attempts
+                # 리스트를 앞에서부터 순서대로 시도하고, 하나라도 성공하면 즉시 멈춘다. 뒤로 갈수록
+                # temperature>0 + 고정 seed를 섞어 "greedy가 스스로 못 빠져나오는 결정적 반복"
+                # 자체를 깨뜨린다 — 이건 greedy(temperature=0) 100% 재현성 전제에서 벗어나는
+                # 의도적 예외이므로 매 시도를 repetition_retry_cases에 전부 기록해 리포트에서
+                # 추적 가능하게 한다.
+                repetition_retry_attempted = 0
+                repetition_retry_succeeded = 0
+                repetition_retry_attempts_used = 0
+                repetition_retry_last_overrides = None
+                attempts_list = repetition_retry_cfg.get("attempts") or []
+                is_runaway_repetition = (
+                    not parse_result.schema_valid
+                    and parse_result.parse_error == "JSON_DECODE_FAILED"
+                    and gen.completion_tokens >= repetition_retry_token_threshold
+                )
+                if repetition_retry_enabled and is_runaway_repetition and attempts_list:
+                    repetition_retry_attempted = 1
+                    for attempt_idx, attempt_overrides in enumerate(attempts_list, start=1):
+                        repetition_retry_attempts_used = attempt_idx
+                        repetition_retry_last_overrides = attempt_overrides
+                        logger.warning(
+                            "반복루프 의심(doc_id=%s stage=%s condition=%s completion_tokens=%d) — "
+                            "시도 %d/%d: %s로 국소 재시도",
+                            unit.cluster_id, stage, condition_name, gen.completion_tokens,
+                            attempt_idx, len(attempts_list), attempt_overrides,
+                        )
+                        rep_gen = backend.generate_batch(
+                            [pairs[unit_idx]],
+                            sampling_overrides=attempt_overrides,
+                            schema=schema,
+                        )[0]
+                        rep_parse = schema_validate.parse_and_validate(rep_gen.clean_text, schema)
+                        gen = rep_gen
+                        parse_result = rep_parse
+                        if rep_parse.schema_valid:
+                            repetition_retry_succeeded = 1
+                            break
+                    repetition_retry_cases.append(
+                        {
+                            "doc_id": unit.cluster_id,
+                            "stage": stage,
+                            "condition": condition_name,
+                            "succeeded": repetition_retry_succeeded,
+                            "attempts_used": repetition_retry_attempts_used,
+                            "attempts_available": len(attempts_list),
+                        }
+                    )
 
                 if not parse_result.schema_valid:
                     save_failures.append({"doc_id": unit.cluster_id, "stage": stage, "condition": condition_name})
@@ -322,6 +433,12 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
                     "condition": condition_name,
                     "schema_valid": parse_result.schema_valid,
                     "parse_retry": parse_retry_flag,
+                    "repetition_retry_attempted": repetition_retry_attempted,
+                    "repetition_retry_succeeded": repetition_retry_succeeded,
+                    "repetition_retry_attempts_used": repetition_retry_attempts_used,
+                    "repetition_retry_overrides": json.dumps(repetition_retry_last_overrides, ensure_ascii=False)
+                    if repetition_retry_attempted
+                    else None,
                     "think_block_stripped": gen.think_block_stripped,
                     "prompt_tokens": gen.prompt_tokens,
                     "completion_tokens": gen.completion_tokens,
@@ -357,36 +474,50 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
     labels_df.drop(columns=["parsed"], errors="ignore").to_csv(flat_dir / "labels.csv", index=False)
     logger.info("flat/labels.parquet 저장 완료: %d행", len(labels_df))
 
-    if determinism_pairs is None:
-        # 체크포인트로 전부 스킵된 경우(재실행) — persona_01/identity_on을 새로 조립해 재확인한다.
-        stage0 = config.chain_order[0]
-        sp0 = stage_prompts[stage0]
-        determinism_pairs = []
-        determinism_ids = []
-        for unit in units:
-            legal_context = legal_retrieval.retrieve(" ".join(unit.freq_keywords), legal_chunks)
-            up = prompt_builder.build_cluster_user_prompt(
-                cluster_id=unit.cluster_id,
-                n_docs=unit.n_docs,
-                freq_keywords=unit.freq_keywords,
-                distinctive_keywords=unit.distinctive_keywords,
-                sample_sentences=unit.sample_sentences,
-                previous_output=None,
-                legal_context=legal_context,
-            )
-            sys_p = prompt_builder.build_cluster_system_prompt(sp0, use_identity=True, schema=schemas[stage0])
-            determinism_pairs.append((sys_p, up))
-            determinism_ids.append(unit.cluster_id)
+    if skip_determinism:
+        # 이미 저장된 결정성 검사 결과를 그대로 재사용한다(예: 일부 군집만 재생성하는 부분 재실행).
+        # persona_01 프롬프트는 이 재실행에서 변경되지 않았으므로 재검증할 필요가 없다.
+        existing = metrics_dir / "determinism_check.json"
+        if existing.exists():
+            determinism_result = json.loads(existing.read_text(encoding="utf-8"))
+            logger.info("결정성 검사 스킵 — 기존 결과 재사용: %s", existing)
+        else:
+            determinism_result = {"skipped": True, "reason": "이전 결정성 검사 결과 없음"}
+            logger.warning("결정성 검사 스킵 요청됐지만 기존 결과가 없어 빈 값으로 대체합니다.")
+    else:
+        if determinism_pairs is None:
+            # 체크포인트로 전부 스킵된 경우(재실행) — persona_01/identity_on을 새로 조립해 재확인한다.
+            stage0 = config.chain_order[0]
+            sp0 = stage_prompts[stage0]
+            determinism_pairs = []
+            determinism_ids = []
+            for unit in units:
+                legal_context = legal_retrieval.retrieve(" ".join(unit.freq_keywords), legal_chunks)
+                up = prompt_builder.build_cluster_user_prompt(
+                    cluster_id=unit.cluster_id,
+                    n_docs=unit.n_docs,
+                    freq_keywords=unit.freq_keywords,
+                    distinctive_keywords=unit.distinctive_keywords,
+                    sample_sentences=unit.sample_sentences,
+                    previous_output=None,
+                    legal_context=legal_context,
+                )
+                sys_p = prompt_builder.build_cluster_system_prompt(
+                    sp0, use_identity=True, schema=schemas[stage0], append_no_think=append_no_think
+                )
+                determinism_pairs.append((sys_p, up))
+                determinism_ids.append(unit.cluster_id)
 
-    determinism_result = determinism_mod.run_determinism_check(
-        unit_ids=determinism_ids,
-        pairs=determinism_pairs,
-        backend=backend,
-        sample_size=config.data["determinism_check"]["sample_size"],
-        metrics_dir=metrics_dir,
-        logger=logger,
-        stage_tested=config.chain_order[0],
-    )
+        determinism_result = determinism_mod.run_determinism_check(
+            unit_ids=determinism_ids,
+            pairs=determinism_pairs,
+            backend=backend,
+            sample_size=config.data["determinism_check"]["sample_size"],
+            metrics_dir=metrics_dir,
+            logger=logger,
+            stage_tested=config.chain_order[0],
+            schema=schemas[config.chain_order[0]],
+        )
 
     all_metrics = metrics_mod.compute_all_metrics(labels_df, metrics_dir)
 
@@ -400,6 +531,7 @@ def real_run(config: Config, logger: logging.Logger, limit: int | None = None) -
         "doc_count": unit_count,
         "failure_count": len(save_failures),
         "failures": save_failures,
+        "repetition_retry_cases": repetition_retry_cases,
         "identity_prompt_token_diff": token_diff_report,
         "limit": limit,
     }

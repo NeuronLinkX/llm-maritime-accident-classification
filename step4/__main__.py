@@ -15,6 +15,12 @@ def main() -> int:
     parser.add_argument("--config", required=True, help="config.json 경로")
     parser.add_argument("--dry-run", action="store_true", help="실제 생성 없이 실행 계획만 출력")
     parser.add_argument("--limit", type=int, default=None, help="스모크 테스트용 문서 수 제한")
+    parser.add_argument(
+        "--skip-determinism",
+        action="store_true",
+        help="결정성 검사를 다시 돌리지 않고 기존 metrics/determinism_check.json을 재사용 "
+        "(persona_01 프롬프트가 바뀌지 않은 부분 재실행에 사용)",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -28,7 +34,9 @@ def main() -> int:
 
     try:
         with single_instance_lock(logger=logger):
-            report_path = pipeline.real_run(config, logger, limit=args.limit)
+            report_path = pipeline.real_run(
+                config, logger, limit=args.limit, skip_determinism=args.skip_determinism
+            )
     except AlreadyRunningError as exc:
         logger.error("%s", exc)
         print(f"\n[중단] {exc}", file=sys.stderr)

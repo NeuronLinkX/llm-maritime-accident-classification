@@ -831,6 +831,7 @@
             <a href="#step3-clusters">군집별 주요 인자</a>
             <a href="#step3-conclusion">소결</a>
             <a href="#step3-similarity">실제 유사도 예시</a>
+            <a href="#step3-file-browser">군집별 원문서 목록</a>
           </div>
         </div>
         <div class="nav-group">
@@ -1043,6 +1044,49 @@
       <div class="sim-subhead" style="margin-top:22px;">군집별 대표 문서 예시</div>
       <div class="card-note">818건 전체를 한 표에 담을 수는 없어서, 군집마다 그 군집의 중심 벡터에 가장 가까운 대표 문서 2개씩을 뽑았습니다. 같은 군집끼리(대각선 근처 블록)의 값이 다른 군집 문서와의 값보다 대체로 높게 나오면, 군집화가 실제 의미 유사도를 잘 반영했다는 뜻입니다.</div>
       <div id="similarity-sample"></div>
+    </section>
+
+    <section class="card" id="step3-file-browser">
+      <div class="card-head"><h2>군집별 원문서 목록</h2></div>
+      <div class="card-note">STEP3이 군집을 배정한 818건 원문서 전체입니다. 군집·카테고리로 필터링하거나 파일명/id로 검색할 수 있습니다.</div>
+
+      <div id="step3-browser-table">
+        <div class="controls">
+          <div class="search">
+            <input id="s3-q" type="text" placeholder="파일명 또는 id로 검색…" autocomplete="off" />
+          </div>
+          <div class="filter-row">
+            <label for="s3-f-cluster">군집</label>
+            <select id="s3-f-cluster" class="fsel"></select>
+            <label for="s3-f-cat">카테고리</label>
+            <select id="s3-f-cat" class="fsel"></select>
+            <button class="reset-btn" id="s3-reset-filters">필터 초기화</button>
+            <span class="pagesize-group">
+              <label for="s3-f-pagesize">페이지당</label>
+              <select id="s3-f-pagesize" class="fsel"></select>
+            </span>
+          </div>
+          <div class="count-line" id="s3-count-line"></div>
+        </div>
+
+        <div class="tablewrap">
+          <table id="s3-tbl">
+            <thead>
+              <tr>
+                <th class="col-num">#</th>
+                <th class="col-cat">군집</th>
+                <th>id</th>
+                <th class="col-cat">카테고리</th>
+                <th>파일명</th>
+              </tr>
+            </thead>
+            <tbody id="s3-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="s3-empty-state" style="display:none">일치하는 결과가 없습니다.</div>
+        </div>
+
+        <div class="pager" id="s3-pager"></div>
+      </div>
     </section>
 
     </section>
@@ -2094,6 +2138,124 @@
         <div class="compare-note" style="margin-top:10px;">색이 진할수록(대각선 제외) 실제 코사인 유사도가 높습니다. 대각선은 자기 자신과의 유사도(항상 1.000)라 별도 색으로 고정했습니다. 앞의 색 점은 소속 군집입니다.</div>`;
     }
 
+    /* ---- 군집별 원문서 목록(필터·검색·페이지네이션) ---- */
+    const S3_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, 150, 200];
+    const s3State = { q: "", cluster: "", category: "", page: 1, pageSize: 50 };
+
+    const s3Docs = [];
+    (DATA3.clusters || []).forEach(c => {
+      (c.docs || []).forEach(d => s3Docs.push({ cluster: c.cluster, id: d.id, category: d.category, filename: d.filename }));
+    });
+    const s3Categories = [...new Set(s3Docs.map(d => d.category))].sort();
+
+    function s3FillOptions(sel, values, allLabel) {
+      sel.innerHTML = `<option value="">${esc(allLabel)}</option>` +
+        values.map(v => `<option value="${esc(String(v.value))}">${esc(v.label)}</option>`).join("");
+    }
+
+    function s3Matches(d) {
+      if (s3State.q && !d.filename.toLowerCase().includes(s3State.q) && !String(d.id).toLowerCase().includes(s3State.q)) return false;
+      if (s3State.cluster !== "" && String(d.cluster) !== s3State.cluster) return false;
+      if (s3State.category && d.category !== s3State.category) return false;
+      return true;
+    }
+
+    function s3RowHtml(d, pos) {
+      return `<tr>
+        <td class="num">${pos}</td>
+        <td class="center">군집${d.cluster}</td>
+        <td>${esc(d.id)}</td>
+        <td>${esc(d.category || "-")}</td>
+        <td class="fname"><span class="fn" title="${esc(d.filename)}">${esc(d.filename)}</span></td>
+      </tr>`;
+    }
+
+    function s3RenderPager(count, totalPages) {
+      const pager = document.getElementById("s3-pager");
+      if (count <= s3State.pageSize) { pager.innerHTML = ""; return; }
+      const cur = s3State.page;
+      const btn = (label, page, opts = {}) =>
+        `<button ${opts.disabled ? "disabled" : ""} ${page === cur ? 'aria-current="true"' : ""} data-page="${page}">${label}</button>`;
+      let html = "";
+      html += btn("이전", cur - 1, { disabled: cur === 1 });
+      const pages = new Set([1, totalPages, cur, cur - 1, cur + 1]);
+      let last = 0;
+      [...pages].filter(p => p >= 1 && p <= totalPages).sort((a, b) => a - b).forEach(p => {
+        if (last && p - last > 1) html += `<span class="gap">…</span>`;
+        html += btn(String(p), p);
+        last = p;
+      });
+      html += btn("다음", cur + 1, { disabled: cur === totalPages });
+      pager.innerHTML = html;
+      pager.querySelectorAll("button[data-page]").forEach(b => {
+        b.addEventListener("click", () => {
+          s3State.page = Number(b.getAttribute("data-page"));
+          s3Render();
+          document.getElementById("step3-browser-table").scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    }
+
+    function s3Render() {
+      const filtered = s3Docs.filter(s3Matches);
+      const totalPages = Math.max(1, Math.ceil(filtered.length / s3State.pageSize));
+      if (s3State.page > totalPages) s3State.page = totalPages;
+      if (s3State.page < 1) s3State.page = 1;
+
+      document.getElementById("s3-count-line").textContent =
+        `${filtered.length.toLocaleString()}건 표시 중 (전체 ${s3Docs.length.toLocaleString()}건 중) · ${s3State.page}/${totalPages}페이지`;
+
+      const tbody = document.getElementById("s3-tbody");
+      const empty = document.getElementById("s3-empty-state");
+      if (filtered.length === 0) {
+        tbody.innerHTML = "";
+        empty.style.display = "block";
+        s3RenderPager(0, 1);
+        return;
+      }
+      empty.style.display = "none";
+      const start = (s3State.page - 1) * s3State.pageSize;
+      const pageRows = filtered.slice(start, start + s3State.pageSize);
+      tbody.innerHTML = pageRows.map((d, i) => s3RowHtml(d, start + i + 1)).join("");
+      s3RenderPager(filtered.length, totalPages);
+    }
+
+    document.getElementById("s3-q").addEventListener("input", (e) => {
+      s3State.q = e.target.value.trim().toLowerCase();
+      s3State.page = 1;
+      s3Render();
+    });
+
+    const s3ClusterOptions = (DATA3.clusters || []).map(c => ({ value: String(c.cluster), label: `군집${c.cluster} (${c.n_docs}건)` }));
+    s3FillOptions(document.getElementById("s3-f-cluster"), s3ClusterOptions, "전체");
+
+    const s3CatOptions = s3Categories.map(c => ({ value: c, label: c }));
+    s3FillOptions(document.getElementById("s3-f-cat"), s3CatOptions, "전체");
+
+    const s3PageSizeSel = document.getElementById("s3-f-pagesize");
+    s3PageSizeSel.innerHTML = S3_PAGE_SIZE_OPTIONS.map(n => `<option value="${n}">${n}개씩</option>`).join("");
+    s3PageSizeSel.value = String(s3State.pageSize);
+    s3PageSizeSel.addEventListener("change", (e) => {
+      s3State.pageSize = Number(e.target.value);
+      s3State.page = 1;
+      s3Render();
+    });
+
+    [["s3-f-cluster", "cluster"], ["s3-f-cat", "category"]].forEach(([id, key]) => {
+      document.getElementById(id).addEventListener("change", (e) => {
+        s3State[key] = e.target.value;
+        s3State.page = 1;
+        s3Render();
+      });
+    });
+
+    document.getElementById("s3-reset-filters").addEventListener("click", () => {
+      s3State.q = ""; s3State.cluster = ""; s3State.category = ""; s3State.page = 1;
+      document.getElementById("s3-q").value = "";
+      ["s3-f-cluster", "s3-f-cat"].forEach(id => document.getElementById(id).value = "");
+      s3Render();
+    });
+
     renderGenline();
     renderStats(DATA3.summary);
     drawKChart("kchart-wcss", DATA3.k_selection, "wcss");
@@ -2103,6 +2265,7 @@
     renderConclusion(DATA3.insights);
     renderSimilarityHistogram(DATA3.similarity_histogram);
     renderSimilaritySample(DATA3.similarity_sample);
+    s3Render();
   })();
 
   /* ================= STEP 4 (구 UI, 삭제됨) =================
@@ -2124,7 +2287,7 @@
     // (예전엔 별도 워크트리의 9102 포트에서만 서비스했다), 포트/호스트에 상관없이 항상
     // "지금 이 페이지를 서비스하는 곳"에서 그대로 열린다. gui_web 폴더째로 옮기거나
     // 다른 포트로 띄워도 이 링크는 그대로 따라간다.
-    const reportUrl = "report_step4_matrix.php";
+    const reportUrl = "report_step4_persona.php";
     if (newTabLink) newTabLink.href = reportUrl;
 
     function openModal() {

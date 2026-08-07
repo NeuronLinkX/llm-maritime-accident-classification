@@ -11,8 +11,10 @@
     ]
   },
   "model": {
-    "id": "Qwen3-14B",
-    "path": "/home/jiwoo/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/40c069824f4251a91eefaf281ebe4c544efd3e18",
+    "id": "Qwen2.5-14B-Instruct",
+    "family": "qwen2.5",
+    "family_note": "step4/config.py::infer_model_family()가 이 값을 읽어 Qwen3 아키텍처 전용 처리(/no_think 접미사, apply_chat_template의 enable_thinking 인자)를 켠다 — 이 둘만 진짜 Qwen3 고유이므로 model_family로 게이팅한다. validation.repetition_retry(반복루프 국소 재시도)는 더 이상 model_family로 게이팅하지 않는다 — Qwen2.5-14B-Instruct도 persona_02/identity_on에서 Qwen3와 동일한 종류의 반복루프(문자열 내부 공백 반복으로 4096 토큰 소진)를 겪는 것이 2026-08-07 실측으로 확인되어, validation.repetition_retry.note 참고. Qwen3로 되돌릴 경우 이 필드를 'qwen3'로, id/path도 함께 되돌릴 것.",
+    "path": "/home/jiwoo/.cache/huggingface/hub/models--Qwen--Qwen2.5-14B-Instruct/snapshots/cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
     "backend": "vllm",
     "dtype": "bfloat16",
     "max_model_len": 32768,
@@ -30,7 +32,7 @@
     "repetition_penalty": 1.15,
     "repetition_penalty_note": "1.0(중립)에서는 cluster_3(대표문장 15개, 가장 큰 군집)의 persona_01이 EVIDENCE_604, EVIDENCE_605...EVIDENCE_621처럼 존재하지 않는 증거 ID를 무한 나열하는 반복루프에 빠져 6144 토큰을 다 쓰고도 완성 못 함. 1.15로도 같은 루프(EVIDENCE_343...367)가 재현돼 부족했던 것으로 확인됨.",
     "frequency_penalty": 0.4,
-    "frequency_penalty_note": "repetition_penalty(유무만 보는 페널티)만으로는 cluster_3의 순차 ID 나열 루프가 안 잡혀서 추가. frequency_penalty는 이미 나온 횟수에 비례해 누적 페널티를 줘서 'EVIDENCE_NNN을 계속 늘려가며 반복'하는 패턴에 더 직접적으로 작동한다. 프롬프트에도 'ID 배열은 항목당 최대 5개, 두 자릿수 넘으면 오류'라는 명시적 지시를 함께 추가함(prompt_builder.cluster_mode_preamble)."
+    "frequency_penalty_note": "repetition_penalty(유무만 보는 페널티)만으로는 cluster_3의 순차 ID 나열 루프가 안 잡혀서 추가. frequency_penalty는 이미 나온 횟수에 비례해 누적 페널티를 줘서 'EVIDENCE_NNN을 계속 늘려가며 반복'하는 패턴에 더 직접적으로 작동한다. 프롬프트에도 'ID 배열은 항목당 최대 5개, 두 자릿수 넘으면 오류'라는 명시적 지시를 함께 추가함(prompt_builder.cluster_mode_preamble). 0.4로도 cluster_3/identity_on의 persona_01이 EVIDENCE_301...368까지 나열하며 재발한 사례가 있었으나(2026-08-07 04:00 리포트), 0.6으로 전역 상향했더니 이번엔 반복루프는 막혔지만 JSON 키의 따옴표가 생성 후반부로 갈수록 \"key\" -> 'key' -> key로 무너지는 새로운 실패가 군집 대부분에서 발생(persona_03 10건 중 9건 JSON_DECODE_FAILED) — frequency_penalty가 JSON 문법에 반복적으로 필요한 따옴표·콜론 토큰까지 억제한 것으로 판단. 그래서 전역값은 0.4로 되돌리고, cluster_3처럼 반복루프가 실제로 재현되는 특정 군집·조건에만 한정해서 더 높은 값을 국소적으로 적용하는 방식으로 전환(step4/pipeline.py의 자동 재시도 로직 참고)."
   },
   "determinism_check": {
     "sample_size": 20,
@@ -54,6 +56,17 @@
   },
   "validation": {
     "retry_on_parse_error": 0,
-    "retry_on_parse_error_note": "greedy에서는 동일 프롬프트 재시도가 동일 출력을 내므로 기본값은 0(재시도 없이 실패로 기록). 1로 켤 경우 프롬프트에 교정 지시를 덧붙여 재요청하며 해당 케이스는 parse_retry 플래그로 표시되어 주 분석에서 제외 가능해야 한다."
+    "retry_on_parse_error_note": "greedy에서는 동일 프롬프트 재시도가 동일 출력을 내므로 기본값은 0(재시도 없이 실패로 기록). 1로 켜서 cluster_3/identity_on의 persona_01 반복루프를 고쳐보려 했으나, 교정 문구를 덧붙인 재시도에서도 무한루프 대신 따옴표가 뒤틀리는 다른 방식의 JSON 파손이 재현됐고(2026-08-07 08:38 리포트), 정작 이전엔 멀쩡했던 cluster_0/cluster_1의 persona_03까지 새로 깨졌다 — 원인은 retry 자체가 아니라 같은 시점에 persona_03_output_schema.json에 추가했던 설명 문구([OUTPUT_JSON_SCHEMA]로 프롬프트에 그대로 삽입됨)가 프롬프트를 불안정하게 만든 것으로 확인되어 그 설명 문구는 되돌림. retry_on_parse_error는 효과가 불확실해 원래 값 0으로 복귀.",
+    "repetition_retry": {
+      "enabled": true,
+      "completion_token_ratio_threshold": 0.95,
+      "attempts": [
+        { "frequency_penalty": 0.6, "repetition_penalty": 1.3 },
+        { "frequency_penalty": 0.7, "repetition_penalty": 1.5, "temperature": 0.3, "top_p": 0.9, "seed": 101 },
+        { "frequency_penalty": 0.8, "repetition_penalty": 1.6, "temperature": 0.5, "top_p": 0.9, "seed": 202 },
+        { "frequency_penalty": 0.9, "repetition_penalty": 1.8, "temperature": 0.8, "top_p": 0.9, "seed": 303 }
+      ],
+      "note": "2026-08-07: 목표를 '전체 30건 성공'으로 재설정하면서 단계적 강화(escalation ladder)로 바꿨다. 1단계(freq=0.6/rep=1.3, 여전히 greedy)만으로는 Qwen2.5-14B에서도 일부 케이스(cluster_0/1의 persona_02)가 다시 반복루프로 실패하는 게 실측됐다 — frequency/repetition penalty만으로는 못 끊는 반복 사이클이 있다는 뜻. 그래서 2~4단계는 temperature를 0.3→0.5→0.8로 점점 올리고 seed를 고정해, '그리디가 스스로 못 빠져나오는 결정적 반복'을 확률적으로 깨뜨리면서도 재현 가능하게(같은 seed로 다시 돌리면 같은 결과) 만들었다. 구조화 출력(backend.py의 structured_outputs)이 JSON 문법 자체는 항상 보장하므로, temperature를 올려도 따옴표·키 손실 같은 문법 붕괴는 재발하지 않는다 — 그 위험은 구조화 출력 도입으로 이미 없앴다. attempts 리스트를 앞에서부터 순서대로 시도하고 하나라도 성공하면 즉시 멈춘다. 트리거 조건은 JSON_DECODE_FAILED이면서 completion_tokens가 max_new_tokens의 95% 이상(=토큰을 다 쓰고 잘렸다는 뜻, 즉 반복루프 정황)인 경우로 한정 — 문법은 맞는데 스키마 내용만 틀린 실패까지 잘못 재시도하지 않기 위함. temperature>0로 생성된 결과는 greedy 100% 결정성 전제에서 벗어난 의도적 예외이므로, run_manifest.json의 repetition_retry_cases(succeeded, attempts_used, attempts_available)와 flat/labels.csv의 repetition_retry_* 컬럼에 전부 기록해 report.py가 '결정성 예외'로 명시하게 했다. **모델 계열 게이팅 이력**: 처음엔 model_family==\"qwen3\"일 때만 켰다(Qwen2.5-14B-Instruct가 persona_01 5/5를 기본 파라미터로 성공했다는 근거). 그런데 같은 Qwen2.5 실행의 persona_02/identity_on에서 cluster_0/cluster_1이 문법은 안 깨졌지만 문자열 내부 공백 반복으로 4096 토큰을 소진하는, Qwen3와 동일한 종류의 반복루프에 빠지는 것이 실측되어(2026-08-07 20:09 확인) — 이 우회가 Qwen3 고유가 아니라 greedy 디코딩 일반의 약점 대응이라는 원래 진단이 맞았음이 재확인됐다. 그래서 step4/pipeline.py의 model_family 게이팅을 제거하고 이 enabled 플래그로만 켜고 끄도록 되돌렸다 — /no_think, enable_thinking처럼 진짜 Qwen3 아키텍처 전용인 항목만 계속 model_family로 게이팅한다."
+    }
   }
 }

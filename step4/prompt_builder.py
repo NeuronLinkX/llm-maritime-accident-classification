@@ -53,15 +53,46 @@ def load_stage_prompt(md_path: Path, persona_id: str, diff_dir: Path, logger) ->
     )
 
 
+def load_document_pair_prompt(
+    persona_md_path: Path, no_persona_md_path: Path, persona_id: str, logger
+) -> StagePrompt:
+    """identity_on/off를 마커로 파생시키는 대신, 독립적으로 작성된 두 문서
+    (persona_0N_*.md / ablation_no_persona/task_0N_no_persona_*.md)의 '실행용 System
+    Prompt' 절을 각각 그대로 on/off 변형으로 쓴다. 두 문서는 서로 다른 시점에 별도로
+    작성된 문서이므로 ablation.build_and_verify_diff의 '마커 외 무변경' 불변식은 적용될
+    수 없다 — 대신 두 절이 정체성 문장 외에는 완전히 동일하면(비교할 실질적 차이가
+    없다는 뜻) 경고만 남긴다.
+    """
+    persona_text = persona_md_path.read_text(encoding="utf-8")
+    no_persona_text = no_persona_md_path.read_text(encoding="utf-8")
+    on_text = _extract_section(persona_text, "실행용 System Prompt").strip()
+    off_text = _extract_section(no_persona_text, "실행용 System Prompt").strip()
+
+    on_text_no_identity = ablation._BLOCK_RE.sub("", on_text).strip()
+    if on_text_no_identity == off_text:
+        logger.warning(
+            "%s: persona 문서와 no-persona 문서의 실행용 System Prompt가 정체성 문장 외에는 "
+            "완전히 동일합니다 — 이 단계에서는 실질적으로 identity_on/off 비교와 같은 결과가 "
+            "나올 것으로 예상됩니다.",
+            persona_id,
+        )
+    return StagePrompt(persona_id=persona_id, system_prompt_on=on_text, system_prompt_off=off_text)
+
+
 NO_THINK_SUFFIX = "\n\n/no_think"
+"""Qwen3 하이브리드 사고모드 전용 소프트 스위치. 다른 모델 계열에는 아무 의미가 없는
+문자열이므로, model_family가 "qwen3"일 때만 붙인다(호출부에서 append_no_think로 제어)."""
 
 
-def build_system_prompt(stage_prompt: StagePrompt, use_identity: bool, schema: dict) -> str:
+def build_system_prompt(
+    stage_prompt: StagePrompt, use_identity: bool, schema: dict, append_no_think: bool = True
+) -> str:
     # "실제 실행용 System Prompt"는 "위 JSON Schema에 맞는 JSON 객체..."라고만 말하고 실제 스키마는
     # persona_0N.md의 별도 설계 섹션(런타임에는 보내지 않음)에 있으므로, 여기서 명시적으로 붙여준다.
     base = stage_prompt.system_prompt_on if use_identity else stage_prompt.system_prompt_off
     schema_block = "\n\n[OUTPUT_JSON_SCHEMA]\n" + json.dumps(schema, ensure_ascii=False, indent=2)
-    return base + schema_block + NO_THINK_SUFFIX
+    suffix = NO_THINK_SUFFIX if append_no_think else ""
+    return base + schema_block + suffix
 
 
 # ---------------------------------------------------------------------------
@@ -104,12 +135,17 @@ def cluster_mode_preamble(persona_id: str) -> str:
     )
 
 
-def build_cluster_system_prompt(stage_prompt: StagePrompt, use_identity: bool, schema: dict) -> str:
-    base = build_system_prompt(stage_prompt, use_identity=use_identity, schema=schema)
+def build_cluster_system_prompt(
+    stage_prompt: StagePrompt, use_identity: bool, schema: dict, append_no_think: bool = True
+) -> str:
+    base = build_system_prompt(
+        stage_prompt, use_identity=use_identity, schema=schema, append_no_think=append_no_think
+    )
     # NO_THINK_SUFFIX가 이미 맨 끝에 붙어있으므로, 그 앞에 군집 모드 안내를 끼워넣는다.
-    if base.endswith(NO_THINK_SUFFIX):
-        base = base[: -len(NO_THINK_SUFFIX)]
-    return base + cluster_mode_preamble(stage_prompt.persona_id) + NO_THINK_SUFFIX
+    suffix = NO_THINK_SUFFIX if append_no_think else ""
+    if suffix and base.endswith(suffix):
+        base = base[: -len(suffix)]
+    return base + cluster_mode_preamble(stage_prompt.persona_id) + suffix
 
 
 def build_cluster_user_prompt(

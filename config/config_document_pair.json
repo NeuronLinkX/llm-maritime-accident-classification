@@ -1,0 +1,66 @@
+{
+  "experiment": {
+    "name": "step4_persona_vs_no_persona_document_pair",
+    "decoding_mode": "greedy",
+    "comparison_mode": "document_pair",
+    "note": "config.json(identity_marker 모드)의 identity_on/off는 persona_0N.md 한 문서 안에서 정체성 문장 한 줄만 넣고 뺀 비교라 페르소나 효과를 아주 좁게만 본다. 이 config는 그 대신 처음부터 독립적으로 저작된 두 문서 — persona_0N_*.md(역할 정의·법령 조문 인용 포함)와 persona_model/ablation_no_persona/task_0N_no_persona_*.md(명령문·간략 법령 근거) — 의 '실행용 System Prompt' 절을 그대로 identity_on/off로 사용한다. 실측 결과 persona_01/NOPERSONA-01 쌍은 두 문서가 정체성 문장 외엔 완전히 동일해 identity_marker 모드와 사실상 같은 비교가 되지만, persona_02/03과 그 대응 문서는 실질적으로 다른 문장으로 작성돼 있어 이 모드에서만 의미 있는 차이를 볼 수 있다(step4/prompt_builder.py::load_document_pair_prompt가 이 경우 경고 로그를 남긴다). persona_0N.md 자체는 전혀 수정하지 않는다 — 이 config만 다르게 읽는다.",
+    "personas": ["persona_01", "persona_02", "persona_03"],
+    "chain_order": ["persona_01", "persona_02", "persona_03"],
+    "conditions": [
+      { "name": "identity_on",  "use_persona_identity": true  },
+      { "name": "identity_off", "use_persona_identity": false }
+    ],
+    "conditions_note": "이 모드에서 identity_on = persona_0N.md 문서 사용, identity_off = task_0N_no_persona_*.md 문서 사용. config.py의 조건 이름 검증(정확히 identity_on/identity_off 2개)을 그대로 재사용하기 위해 이름은 바꾸지 않았다 — metrics.py/report.py의 기존 통계 코드(McNemar, Wilcoxon, JS divergence 등)를 손대지 않고 그대로 재사용한다."
+  },
+  "model": {
+    "id": "Qwen3-14B",
+    "family": "qwen3",
+    "path": "/home/jiwoo/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/40c069824f4251a91eefaf281ebe4c544efd3e18",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "max_model_len": 32768,
+    "gpu_memory_utilization": 0.35,
+    "gpu_memory_utilization_note": "config.json과 동일한 이유(jeon 사용자의 별도 vLLM 스택과 GPU 공유)로 낮춰둠.",
+    "local_files_only": true,
+    "enable_thinking": false
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": -1,
+    "max_new_tokens": 4096,
+    "repetition_penalty": 1.15,
+    "frequency_penalty": 0.4,
+    "note": "config.json(identity_marker 모드)에서 실측·검증된 값을 그대로 재사용한다 — 두 실험 간 비교 가능성을 위해 생성 파라미터를 동일하게 유지."
+  },
+  "determinism_check": {
+    "sample_size": 20,
+    "note": "config.json과 동일한 방식."
+  },
+  "paths": {
+    "persona_dir": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/persona_model",
+    "no_persona_dir": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/persona_model/ablation_no_persona",
+    "gold_set": null,
+    "output_root": "./outputs/step4_persona_vs_no_persona"
+  },
+  "cluster": {
+    "note": "config.json과 동일한 군집·표본 배분(Neyman 최적 배분, README.md 참고)을 그대로 사용 — 비교 대상이 문서쌍뿐이므로 군집 구성은 바꿀 이유가 없다.",
+    "paths": {
+      "clusters_csv": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_3_process/output/clusters.csv",
+      "cluster_keywords_csv": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_3_process/output/cluster_keywords.csv",
+      "step1_jsonl": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_2_process/from_step1/step1_dataset.jsonl"
+    },
+    "samples_per_cluster": { "0": 8, "1": 10, "2": 5, "3": 15, "4": 3 },
+    "samples_per_cluster_default": 5,
+    "sample_text_maxlen": 300
+  },
+  "validation": {
+    "retry_on_parse_error": 0,
+    "repetition_retry": {
+      "enabled": true,
+      "frequency_penalty": 0.6,
+      "completion_token_ratio_threshold": 0.95,
+      "note": "config.json과 동일한 국소 재시도 안전장치. 문서쌍 비교라 프롬프트 분량·문체가 identity_marker 모드보다 더 다양하므로, cluster_3처럼 반복루프에 취약한 조합이 identity_off(no-persona 문서) 쪽에서도 나타날 수 있다."
+    }
+  }
+}

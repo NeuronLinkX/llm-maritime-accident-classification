@@ -23,8 +23,6 @@
 
 **STEP 4 — LLM 기반 사고원인 구조화 레이블링** (`step_4_process/`, 17장, 실험 단계)
 
-7. 군집별 특징 키워드와 대표 문장을 LLM에 입력해, 사전 정의된 사고원인 분류 체계에 맞춰 구조화된 라벨을 도출 — OpenAI API 경로와 DGX Spark 로컬 LLM 경로 두 가지를 병행 검토
-
 전체 결과는 하나의 통합 웹 리포트(`gui_web/report.php` 또는 정적 스냅샷 `report.html`, 18장)에서 STEP 1~4를 한 페이지로 확인할 수 있습니다.
 
 > 참고 : 해당 프로그램은 오로지 `KMST`(해양안전심판원)부터 제공을 받을 수 있는 `재결요약서`(선박 사고 관련 공문서) 형태의 문서를 다루도록 작성이 되었으나, 다른 도메인의 법적인 문서를 전처리하려는 사용자에게도 해당 프로그램이 도움이 일부 될 수 있음을 미리 서두에 밝혀둠
@@ -55,7 +53,7 @@ root/
 ├── gpu_run.sh         ← STEP 1 실행 진입점(12.1절)
 ├── step_1.log         STEP 1 실행 로그가 쌓이는 곳(gpu_run.sh가 append)
 ├── config/
-│   └── config.php     OpenAI API 키, HF_TOKEN 등 STEP 4가 쓰는 비밀값(17장)
+│   └── config.json    STEP 4(페르소나 체인) 실행 설정 — 모델 경로, 생성 옵션, 조건(17장)
 ├── step_1_process/   ← 전처리 파이프라인 본체(이 문서 2~14장이 다루는 대부분)
 │   ├── data/                       원본 hwp/hwpx/pdf
 │   ├── data_output/                처리 결과 JSON
@@ -75,15 +73,18 @@ root/
 │   ├── cpp/kmeans.cpp, Makefile     K-Means + Elbow/Silhouette 자동 K탐색(C++)
 │   ├── keywords.py, wordcloud_gen.py, join_tsne.py   Komoran 키워드 추출 / 워드클라우드 / 좌표 조인(Python)
 │   └── output/                     clusters.csv, k_selection.csv, cluster_keywords.csv, wordcloud_cluster_*.png
-├── step_4_process/   ← STEP 4: LLM 구조화 레이블링(17장, 실험 단계)
-│   └── local_llm_server.py         DGX Spark 로컬 LLM 서버(FastAPI, OpenAI 호환 API, 다중 모델 비교)
-└── gui_web/          ← 결과 시각화 전용(STEP 1~4 통합 리포트, 18장)
+├── step4/            ← STEP 4: 페르소나 체인 기반 군집 레이블링 본체(17장, Python)
+├── step_4_process/
+│   ├── .venv/                      STEP4 전용 실행 환경(vLLM 등)
+│   └── deprecated/                 이전 버전(다중모델·프롬프트 변형 비교) 스크립트, 보관용
+├── persona_model/    ← STEP4가 쓰는 페르소나 정의·법령 코퍼스·KMST 공식 분류체계
+├── outputs/step4_persona_ablation/ ← STEP4 실행 결과(17.5절)
+│
+└── gui_web/          ← 결과 시각화 전용(STEP 1~3 통합 리포트, 18장 — STEP4 관련 페이지는 구버전 유물로 남아있음)
     ├── report_template.html        모든 STEP을 한 페이지에 담는 공유 템플릿
     ├── generate_report.py          report.html 정적 빌드(STEP2/3 빌더를 모듈로 불러옴)
     ├── report.php                  실시간 통합 리포트(PHP 내장 서버로 구동)
-    ├── lib_step2_data.php, lib_step3_data.php, lib_llm_common.php   PHP 데이터 로더(재사용 라이브러리)
-    ├── api_llm_label.php           STEP4 분기1(OpenAI) 엔드포인트
-    ├── api_local_llm_health.php, api_local_llm_label.php   STEP4 분기2(로컬 LLM) 엔드포인트
+    ├── lib_step2_data.php, lib_step3_data.php   PHP 데이터 로더(재사용 라이브러리)
     └── assets/                     로고, 워드클라우드 이미지 등 정적 자산
 ```
 
@@ -925,88 +926,80 @@ python3 similarity_histogram.py
 
 ---
 
-## 17. STEP 4 : LLM 기반 사고원인 구조화 레이블링
+## 17. STEP 4 : 페르소나 체인 기반 군집 레이블링
 
-STEP 3의 군집을 사전 정의된 사고원인 대분류로 레이블링합니다.
+STEP 3의 군집을 KMST(해양안전심판원) 공식 사고원인 분류체계로 레이블링합니다. 외부 API 없이 이 기기(DGX Spark)의 로컬 모델만 사용하며, "역할·정체성을 부여한 페르소나가 정체성 없는 동일 모델보다 실제로 나은가"를 두 조건 대응비교로 검증하는 것이 핵심입니다.
 
-### 17.1 목적
+### 17.1 목적과 구조
 
-군집별 특징 키워드와 대표 문장 일부를 LLM에 보내 "경계소홀/정비불량·기기결함/화재·폭발/…" 같은 사전 정의된 분류 후보 중 하나를 제안받고, 근거와 확신도를 함께 받습니다. STEP 3에서 818건 전체가 이미 군집에 배정돼 있으므로, 문서 단위로 LLM을 다시 호출하지 않고 군집 라벨을 그대로 조인해 전체를 분류합니다(gui_web STEP4 페이지의 "전체 818건에 적용" 버튼).
+군집 5개 각각에 대해 **정체성 포함(identity_on) / 정체성 제거(identity_off)** 두 조건으로, 다음 3단계 체인을 순서대로 실행합니다.
 
-### 17.2 분기 1: OpenAI API
-
-`config/config.php`에 키를 등록합니다.
-
-```php
-define('OPENAI_API_KEY', 'sk-...');       // https://platform.openai.com/api-keys
-define('OPENAI_CHAT_MODEL', 'gpt-4o-mini');
+```text
+① 사실·패턴 구조화 → ② 원인 후보 검증 → ③ KMST 레이블 확정
 ```
 
-이 키는 `gui_web/api_llm_label.php`(서버 사이드)에서만 쓰이고 브라우저로는 내려가지 않습니다. gui_web 통합 리포트(18장)의 STEP4 탭에서 "레이블링 실행" 버튼으로 호출합니다.
+세 단계는 서로 다른 역할이지만 순서대로만 실행됩니다(②는 ①의 결과를, ③은 ②의 결과를 필요로 함). 두 조건은 정체성 선언 문장 유무만 다르고 나머지 지시문은 완전히 동일합니다 — 이 동일성은 실행 전에 자동으로 검증되며, 정체성 문구 외의 차이가 발견되면 실행이 중단됩니다. 왜 이런 구조인지는 `Layer.md`의 STEP4 절에 자세히 정리해뒀습니다.
 
-> 이 프로젝트 검증 환경엔 PHP `curl`/`mbstring` 확장이 없어서, `api_llm_label.php`는 `file_get_contents` + 스트림 컨텍스트, 그리고 직접 구현한 UTF-8 자르기 함수로 우회합니다. 두 확장이 있는 환경이라면 별도 조치 없이 그대로 동작합니다.
+### 17.2 준비물
 
-![openai_labeling_1](openai_labeling_1.png)
-
-![openai_labeling_2](openai_labeling_2.png)
-
-![openai_labeling_3](openai_labeling_3.png)
-
-### 17.3 분기 2: DGX Spark 로컬 LLM
-
-외부 API·인터넷 연결 없이, 이 기기(GPU)에 모델을 직접 올려 같은 작업을 수행하는 경로입니다. 여러 모델을 받아서 비교할 수 있도록 만들어져 있습니다.
+- 로컬 모델: `Qwen3-14B`(경로는 아래 설정 파일에서 지정)
+- STEP 2·3 산출물: 군집 결과, 군집 키워드, 문서 원문 텍스트(이미 STEP 2·3을 마쳤다면 그대로 있음)
+- 페르소나 정의 자산(`persona_model/`): 3단계 각각의 역할 정의, 출력 규격, KMST 공식 분류체계 — 이미 준비돼 있음
+- 실행 환경: `step_4_process/.venv`(최초 1회만 아래처럼 구성)
 
 ```bash
 cd step_4_process
-source ../step_2_process/sbert_env/bin/activate
-pip install fastapi "uvicorn[standard]" accelerate
-
-python3 local_llm_server.py     # 기본 포트 8500
+python3 -m venv .venv
+./.venv/bin/pip install vllm pandas pyarrow scipy matplotlib jsonschema
 ```
 
-기본 비교 카탈로그(`local_llm_server.py`의 `MODEL_CATALOG`) — 크기 축(Qwen 3B/7B/14B)과 계열 축(Qwen vs Llama)을 봅니다.
+### 17.3 설정 파일
 
-| 모델                                 | 계열/크기  | 비고                                      |
-| ------------------------------------ | ---------- | ----------------------------------------- |
-| `Qwen/Qwen2.5-3B-Instruct`         | Qwen, 소형 | 다운로드 빠름, 기본값                     |
-| `Qwen/Qwen2.5-7B-Instruct`         | Qwen, 중형 | 크기 축 비교 (Qwen 계열)                  |
-| `Qwen/Qwen2.5-14B-Instruct`        | Qwen, 대형 | 크기 축 비교 (Qwen 계열)                  |
-| `meta-llama/Llama-3.1-8B-Instruct` | Llama, 8B  | 계열 축 비교,**gated** — 아래 참고 |
+`config/config.json` 하나로 모델·생성 옵션·경로·조건을 전부 지정합니다. 주요 항목만 요약하면:
 
-각 모델은 처음 요청이 올 때 자동으로 다운로드·로드됩니다(지연 로딩). 모델 가중치는 `~/.cache/huggingface/hub/`에 캐시되어 재실행 시 다시 받지 않습니다.
+| 항목                                                      | 의미                                                                        |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `experiment.conditions`                                 | 정체성 포함/제거 두 조건 (고정)                                             |
+| `model.path`                                            | 로컬 모델 경로                                                              |
+| `model.gpu_memory_utilization`                          | GPU를 다른 프로세스와 공유하는 상황이면 낮춰서 충돌 방지                    |
+| `generation.temperature`                                | 반드시 0(재현성 우선, greedy)                                               |
+| `generation.max_new_tokens`                             | 응답이 중간에 잘리면 늘려야 함 — 실제 출력 길이를 보고 여유 있게 산정할 것 |
+| `generation.repetition_penalty` / `frequency_penalty` | 모델이 같은 내용을 무한히 반복 생성하는 것을 억제                           |
+| `cluster.samples_per_cluster`                           | 군집별로 프롬프트에 넣을 대표 문장 개수                                     |
+| `paths.output_root`                                     | 결과가 쌓일 위치                                                            |
 
-> `mistralai/Mistral-7B-Instruct-v0.3`, `microsoft/Phi-3.5-mini-instruct`, `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct`도 계열 축에 넣어봤지만 이 환경(transformers 5.14.1)에서 안정적으로 돌지 않아 카탈로그에서 뺐습니다 — Phi-3.5-mini는 생성 시 `AttributeError: 'DynamicCache' object has no attribute 'seen_tokens'`, EXAONE-3.5는 `TypeError: create_causal_mask() got an unexpected keyword argument 'input_embeds'`로 죽었는데, 둘 다 저장소의 커스텀 모델링 코드(`trust_remote_code=True`로 실행됨)가 이 transformers 버전의 내부 API보다 오래돼서 생기는 문제입니다. Mistral-7B는 이 환경에서 호출이 반복적으로 실패했습니다. transformers를 올리거나 각 저장소가 코드를 업데이트하면 다시 추가할 수 있습니다.
->
-> Llama는 저장소에 포함된 커스텀 모델링 코드를 실행해야 로드됩니다(`trust_remote_code=True`). 원 제작사(Meta) 공식 저장소라 허용했지만, 카탈로그에 다른 저장소를 추가할 때는 이 옵션이 임의 코드 실행을 허용한다는 점을 감안해 출처를 확인하세요.
+### 17.4 실행
 
-**gated 모델(Llama, Gemma 등) 접근하기**: Hugging Face 계정으로 해당 모델 페이지(예: `huggingface.co/meta-llama/Llama-3.1-8B-Instruct`)에서 라이선스에 동의하고, [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)에서 Read 토큰을 발급받은 뒤 `config/config.php`에 등록합니다.
+```bash
+cd /home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system
 
-```php
-define('HF_TOKEN', 'hf_...');
+# 실행 계획만 미리 확인 (실제 생성 없음)
+./step_4_process/.venv/bin/python -m step4 --config config/config.json --dry-run
+
+# 실제 실행 (군집 5개 × 3단계 × 2조건 = 30회 호출)
+./step_4_process/.venv/bin/python -m step4 --config config/config.json
 ```
 
-`local_llm_server.py`가 시작할 때 이 값을 자동으로 읽어 환경변수로 세팅합니다. 라이선스 동의 없이 토큰만 있으면 그 모델만 로드 실패(`status: "error"`)로 표시되고 나머지 모델은 정상 동작합니다.
+같은 명령을 두 번 동시에 실행하면 GPU를 두 프로세스가 동시에 점유하려다 충돌하므로, 이미 실행 중이면 자동으로 막힙니다(두 번째 실행은 즉시 안내 메시지와 함께 종료). 중간에 중단돼도 이미 끝난 군집·단계·조건 조합은 재실행 시 건너뜁니다.
 
-gui_web STEP4 탭의 "로컬 LLM(DGX Spark)" 패널에서: **① "작동 유무 확인"으로 서버 응답을 먼저 확인 → ② 레이블링 실행**. 서버가 꺼져 있으면 실행 버튼이 비활성 상태로 유지됩니다.
+### 17.5 산출물
 
-### `Qwen/Qwen2.5-3B-Instruct` 레이블링 결과
+`outputs/step4_persona_ablation/` 아래에 생성됩니다.
 
-- ![baseon_LLM_labeling_2](baseon_LLM_labeling_2.png)
-- ![baseon_LLM_labeling_3](baseon_LLM_labeling_3.png)
+| 경로                                                | 내용                                                                                                                               |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `flat/labels.csv`, `flat/labels.parquet`        | 군집×단계×조건별 요약 표(최종 레이블은`stage=persona_03` 행에만 있음). 컬럼 설명은 `outputs/labels_csv_schema_guide.md` 참고 |
+| `parsed/{군집}/{단계}/{조건}.json`                | 단계별 상세 결과(JSON)                                                                                                             |
+| `raw/{군집}/{단계}/{조건}.json`                   | 모델 원문 응답 그대로                                                                                                              |
+| `metrics/`                                        | 스키마 유효성, 재현성 확인, 정체성 유무 간 통계 비교 결과                                                                          |
+| `report/benchmark_report.md`, `report/figures/` | 최종 리포트와 그림                                                                                                                 |
+| `artifacts/ablation_diff/`                        | 정체성 유무 대응쌍이 정체성 문구 외에는 동일함을 증명하는 diff 파일                                                                |
 
-### 로컬 LLM 다중 모델 비교 결과
+### 17.6 결과 해석 시 유의점
 
-gui_web STEP4의 "로컬 LLM 다중 모델 비교" 탭에서 "전체 모델 비교 실행"을 누르면 카탈로그의 모든 모델을 순서대로 돌려 군집별 라벨 일치도, 818건 라벨 분포, 모델별 "기존 분류 → LLM 제안" 흐름표를 나란히 보여줍니다. 실행이 끝나면 결과가 `step_4_process/output/multimodel_runs.jsonl`에 자동 저장되어(`api_save_multimodel_run.php`), 매번 다시 돌리지 않고도 "이전 기록" 드롭다운(`api_list_multimodel_runs.php`)에서 지난 실행을 다시 불러올 수 있습니다.
-
-결과 위쪽엔 "종합 분석"이 자동으로 뜹니다 — 군집별로 2개 이상 모델이 동의한 비율, 어느 모델이 다수 의견과 가장 자주/적게 일치했는지를 표+문장으로 요약합니다. 이어서 "모델별 라벨 사용 비교"(818건 기준 그룹 막대 그래프)와 "모델 쌍별 일치도"(4x4 히트맵, 두 모델이 5개 군집 중 몇 개에서 같은 라벨을 냈는지)가 뜹니다.
-
-카드 맨 아래 "여러 번 실행한 기록 종합"에서 "저장된 기록 전체로 재현성 분석"을 누르면, `multimodel_runs.jsonl`에 쌓인 **모든** 실행을 모아 모델·군집 조합마다 가장 많이 나온 라벨(최빈값)과 그 비율을 계산합니다(`api_multimodel_stability.php`). 비율이 70% 이상이면 초록(안정적), 40~70%면 노랑, 40% 미만이면 빨강으로 표시됩니다 — "전체 모델 비교 실행"을 여러 번 돌릴수록 이 표가 더 믿을 만해집니다.
-
-### 17.4 두 분기 비교 시 유의점
-
-- 같은 프롬프트(군집 키워드 + 대표 문장 + 후보 라벨 목록)를 두 경로 모두에 그대로 씁니다(`gui_web/lib_llm_common.php`에 공용 구현) — 그래서 결과 차이는 순수하게 모델 성능 차이로 볼 수 있습니다.
-- 실측 예시: 같은 군집을 gpt-4o-mini는 "하역/작업안전(인명사상)"으로, 로컬 Qwen2.5-3B는 "기상/환경요인"으로 다르게 판단한 사례가 있었습니다 — 모델·크기에 따라 판단이 갈릴 수 있다는 뜻이므로, 결과를 바로 확정 라벨로 쓰지 말고 사람이 검토하세요.
-- 로컬 모델을 여러 개 동시에 로드하면 GPU 메모리를 그만큼 나눠 씁니다. 여유 메모리가 부족하면 특정 모델의 `/health`가 `status: "error"`로 뜰 수 있습니다.
+- 조건당 1회(재현 가능한 디코딩)만 실행하므로, 정체성 유무 차이가 진짜 효과인지 우연한 변동인지 완전히 분리하기는 어렵습니다 — 그래서 별도로 "동일 입력을 두 번 실행해 같은 결과가 나오는가"를 확인하는 절차가 포함돼 있고, 그 결과가 리포트에 그대로 남습니다.
+- 레이블 코드가 KMST 공식 분류체계 목록 안에 있는지 여부도 함께 기록됩니다 — 목록 밖의 값이 나왔다면 모델이 지어낸 것이므로 그대로 신뢰하지 말고 사람이 검토해야 합니다.
+- 군집은 STEP 3에서 이미 정해진 것을 그대로 씁니다 — STEP4는 군집을 다시 나누지 않고, 각 군집에 KMST 레이블을 붙이는 역할만 합니다.
 
 ---
 
@@ -1053,12 +1046,12 @@ journalctl --user -u step1-localllm.service -f
 
 상단 고정 메뉴바(펼치기/접기)로 STEP1~4 각 섹션의 하위 항목으로 바로 이동할 수 있습니다.
 
-| STEP | 주요 구성                                                                                                |
-| ---- | -------------------------------------------------------------------------------------------------------- |
-| 1    | 처리 현황 통계, 필터·페이지네이션 가능한 문서별 표, 카테고리별 처리 현황 차트                           |
-| 2    | 모델별 벤치마크 막대차트, t-SNE 임베딩 산점도, 유사도 쌍 예시, 3D 네트워크 시뮬레이션(드래그 회전·확대) |
-| 3    | K 자동 탐색 곡선(Elbow/Silhouette), 군집 산점도, 군집별 워드클라우드·키워드, 소결                       |
-| 4    | OpenAI/로컬 LLM 레이블링 실행, 결과 카드, 전체 818건 적용+CSV 다운로드                                   |
+| STEP | 주요 구성                                                                                                                                |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | 처리 현황 통계, 필터·페이지네이션 가능한 문서별 표, 카테고리별 처리 현황 차트                                                           |
+| 2    | 모델별 벤치마크 막대차트, t-SNE 임베딩 산점도, 유사도 쌍 예시, 3D 네트워크 시뮬레이션(드래그 회전·확대)                                 |
+| 3    | K 자동 탐색 곡선(Elbow/Silhouette), 군집 산점도, 군집별 워드클라우드·키워드, 소결                                                       |
+| 4    | (별도)`step4/` CLI로 실행 — 산출물은 `outputs/step4_persona_ablation/`에서 확인(17.5절), gui_web 통합 리포트에는 아직 연동되지 않음 |
 
 ---
 
@@ -1082,10 +1075,7 @@ journalctl --user -u step1-localllm.service -f
 
 - OCR은 모두 **로컬(내 컴퓨터/서버 안)**에서만 처리되며, 외부 API로 문서를 전송하지 않습니다.
 - 임시로 생성되는 파일(변환용 이미지, 임시 HWPX 등)은 처리가 끝나면 자동으로 삭제됩니다. 단, `KEEP_PDF_DEBUG=1`로 실행한 경우에는 디버깅 목적으로 `test_output/debug_pdf/`에 중간 결과가 남으므로, 민감한 문서를 이 옵션으로 처리했다면 확인 후 직접 삭제하세요.
-- STEP 4의 OpenAI 경로만 예외입니다.
-  - 군집 특징 키워드와 대표 문장 일부(원문 전체가 아님)가 OpenAI로 전송됩니다(17.2절).
-  - DGX Spark 로컬 LLM 경로는 STEP 1과 마찬가지로 데이터가 외부로 나가지 않습니다.
-- `config/config.php`에는 OpenAI API 키와 Hugging Face 토큰이 평문으로 저장됩니다. 이 파일을 공개 저장소에 커밋하거나 공유 호스팅에 그대로 올리지 마세요(18.4절 배포 참고).
+- STEP 4도 로컬 모델(DGX Spark)만 사용합니다 — 외부 API로 데이터를 전송하지 않습니다.
 
 ---
 

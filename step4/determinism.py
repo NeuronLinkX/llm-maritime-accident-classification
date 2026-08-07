@@ -22,6 +22,7 @@ def run_determinism_check(
     logger: logging.Logger,
     stage_tested: str,
     condition_tested: str = "identity_on",
+    schema: dict | None = None,
 ) -> dict:
     n = min(sample_size, len(pairs))
     sample_ids = unit_ids[:n]
@@ -33,8 +34,8 @@ def run_determinism_check(
             n,
         )
 
-    run1 = backend.generate_batch(sample_pairs)
-    run2 = backend.generate_batch(sample_pairs)
+    run1 = backend.generate_batch(sample_pairs, schema=schema)
+    run2 = backend.generate_batch(sample_pairs, schema=schema)
 
     byte_identical = []
     label_identical = []

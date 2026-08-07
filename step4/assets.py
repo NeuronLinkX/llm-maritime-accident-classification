@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 PERSONA_MD_RE = re.compile(r"^(persona_\d+)_.*\.md$")
+NO_PERSONA_MD_RE = re.compile(r"^task_(\d+)_no_persona_.*\.md$")
 
 
 @dataclass
@@ -65,3 +66,33 @@ def discover_persona_assets(persona_dir: str | Path, logger: logging.Logger) -> 
         logger.info("공용 출력 스키마(output_schema.json)는 없음 — 페르소나별 스키마만 사용합니다.")
 
     return sorted(assets, key=lambda a: a.persona_id)
+
+
+def discover_no_persona_assets(no_persona_dir: str | Path, logger: logging.Logger) -> dict[str, Path]:
+    """ablation_no_persona/의 task_0N_no_persona_*.md를 persona_id("persona_01" 등)로 매핑한다.
+
+    이 문서들은 persona_0N.md와 독립적으로 저작된 별도 문서다 — 마커 기반 identity_on/off와
+    달리 스키마 파일은 요구하지 않는다(persona_dir의 persona_0N_output_schema.json을 그대로 재사용).
+    """
+    no_persona_dir = Path(no_persona_dir)
+    if not no_persona_dir.is_dir():
+        raise FileNotFoundError(f"no_persona_dir가 존재하지 않습니다: {no_persona_dir}")
+
+    md_candidates = sorted(
+        p for p in no_persona_dir.glob("task_*_no_persona_*.md") if NO_PERSONA_MD_RE.match(p.name)
+    )
+    if not md_candidates:
+        raise FileNotFoundError(f"task_*_no_persona_*.md 자산을 찾지 못했습니다: {no_persona_dir}")
+
+    mapping: dict[str, Path] = {}
+    for md_path in md_candidates:
+        m = NO_PERSONA_MD_RE.match(md_path.name)
+        persona_id = f"persona_{m.group(1)}"
+        if persona_id in mapping:
+            raise ValueError(f"{persona_id}에 대응하는 no-persona 문서가 2개 이상 발견됨: {md_path}")
+        mapping[persona_id] = md_path
+
+    logger.info(
+        "발견된 no-persona 자산: %s", [(pid, p.name) for pid, p in sorted(mapping.items())]
+    )
+    return mapping

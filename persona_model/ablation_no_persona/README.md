@@ -1,35 +1,59 @@
-# 페르소나 도입 vs 미도입 비교실험(Ablation) 설계
+# 페르소나 문서 vs 무페르소나 문서 — 문서쌍 비교(document-pair ablation)
 
-## 목적
-`persona_01/02/03_*.md`(페르소나 버전)와 이 디렉터리의 `task_01/02/03_no_persona_*.md`(비페르소나 버전)를 같은 재결서 표본에 돌려, "당신은 ~이다"류 페르소나 정체성 부여가 출력 품질(GoldSet 라벨 정확도, 스키마 준수율, 근거 추적 가능성 등)에 실제로 영향을 주는지 정량비교하기 위한 대조군이다.
+이 디렉터리(`task_01/02/03_no_persona_*.md`)는 `persona_01/02/03_*.md`와 독립적으로
+작성된 "무페르소나 버전" 문서입니다. `step4/` 패키지가 이 문서들을 실제로 읽어서
+정량 비교를 실행합니다 — **더 이상 폐기된 초안이 아닙니다.**
 
-## 통제한 변수 (두 버전이 동일한 것)
-- 법령 기반 10개 문서 및 검색 컨텍스트(`[SOURCE chunk_id]`)
-- 수행 지침·판단기준·금지사항의 실질 내용
-- JSON 출력 스키마 (`persona_0N_output_schema.json`을 그대로 재사용)
-- User Prompt Template의 필드 구성
+## STEP4에는 지금 두 가지 서로 다른 비교 모드가 있습니다
 
-## 조작한 변수 (유일한 차이)
-- 페르소나 버전: `## 2. 역할 정의`에서 "이 페르소나는 ~한다"처럼 정체성을 부여하고, System Prompt도 "당신은 KMST-P0N이다"로 시작한다.
-- 비페르소나 버전: 동일 내용을 "다음 규칙에 따라 ~하라"는 명령문으로만 서술하고, System Prompt에 정체성 문장이 전혀 없다.
+| 모드 | 무엇을 비교하는가 | 실행 config | identity_on/off의 의미 |
+| --- | --- | --- | --- |
+| `identity_marker` (기존) | `persona_0N_fact_evidence_analyst.md` **한 문서** 안에서 `<!-- IDENTITY_BLOCK_START/END -->` 마커로 정체성 문장 한 줄만 넣고/빼기 | `config/config.json` | on=정체성 문장 있음, off=같은 문서에서 그 문장만 제거 |
+| `document_pair` (이 폴더 사용) | **독립적으로 저작된 두 문서** — `persona_0N_*.md`(역할 정의·법령 조문 인용 포함) vs 이 폴더의 `task_0N_no_persona_*.md`(명령문·간략 법령 근거) | `config/config_document_pair.json` | on=`persona_0N_*.md` 문서 사용, off=이 폴더의 문서 사용 |
 
-## 알려진 주의사항 (실험 전 반드시 확인)
-1. **페르소나 버전 쪽 결함**: 2026-08-06 16시대에 재생성된 `persona_01_fact_evidence_analyst.md`, `persona_02_causation_legal_validator.md`의 "실제 실행용 System Prompt" 섹션이 페르소나 고유 프롬프트가 아니라 마스터 프롬프트의 "시스템 설계자" 문구를 그대로 복사한 상태다. 이 상태로 비교하면 페르소나 버전이 원래 의도와 다른(사실상 고장난) 프롬프트로 평가되어 비교가 무의미해진다. 비교 실험 전에 페르소나 버전의 System Prompt를 `render_fallback_persona()` 형태("당신은 KMST-P0N, {korean_name}이다...")로 반드시 교정해야 한다.
-2. **입력 필드 불일치**: 현재 `persona_02_causation_legal_validator.md`의 User Prompt Template에는 `[PREVIOUS_PERSONA_OUTPUT]`, `[RETRIEVED_LEGAL_CONTEXT]` 필드가 빠져 있다. 이 문서(`task_02_no_persona_causation_legal.md`)는 그 필드를 포함한 상태로 작성했으므로, 지금 그대로 비교하면 입력 정보량 자체가 달라져 페르소나 효과가 아니라 입력량 차이를 측정하게 된다. 페르소나 버전도 같은 필드를 채운 뒤 비교할 것.
-3. 위 두 문제를 해결하기 전까지는 이 디렉터리를 "설계 초안"으로만 사용하고 실측 비교실험에 투입하지 말 것.
+두 모드는 `step4/prompt_builder.py`의 서로 다른 함수가 처리합니다:
+`load_stage_prompt`(identity_marker, `step4/ablation.py`의 마커 diff 검증 포함) vs
+`load_document_pair_prompt`(document_pair, 두 문서를 독립적인 것으로 보고 그대로 사용).
+`persona_0N_*.md` 원본은 어느 모드에서도 수정되지 않습니다.
 
-## 권장 비교 절차
-1. 동일한 재결서 표본(N건, 가능하면 GoldSet 후보가 이미 있는 사건 위주)을 고정한다.
-2. 페르소나 버전 3단계(P01→P02→P03)와 비페르소나 버전 3단계(NOPERSONA-01→02→03)를 각각 같은 temperature·모델로 실행한다.
-3. 비교 지표 예시:
-   - 스키마 유효성(JSON parse 성공률, 필수 필드 채움률)
-   - `source_excerpt`/`source_location`이 실제 재결서 원문에 존재하는 비율(환각 여부)
-   - `cause_category`/`label_code` 등 분류 라벨의 사람 검수 대비 일치율(정확도, F1)
-   - 반복 실행 시 라벨 안정성(동일 사건 재실행 시 라벨 변화 빈도) — 이미 저장소에 있는 `step4_stability_*.svg` / `gui_web/report_step4_matrix.php`의 안정성 비교 방식(A/B/C 변형 비교)을 그대로 원용 가능
-   - `analytic_contribution_score`의 사람 평가자 점수 대비 상관관계
-4. 페르소나 버전과 비페르소나 버전 간 위 지표 차이를 유의성 검정(예: paired test)으로 확인한다.
+## 실행 방법
 
-## 근거 표기 범례
-각 지침 항목 끝의 표기는 다음을 의미한다.
-- `(근거: 「문서명」 제N조 ...)` — 아래 10개 법령·행정규칙 원문에서 실제로 확인한 조문. `persona_model/data/`에서 grep으로 재검증 가능.
-- `(출처: 연구설계 지정 — 법령 근거 아님)` — 법령이 아니라 `persona_pipeline_master_prompt.md`(연구 설계자)가 직접 지정한 경계나 스키마 요구사항.
+```bash
+# identity_marker 모드가 끝난 뒤 실행하세요 (step4는 GPU 동시 사용을 막는 단일 실행 락이 있음)
+./step_4_process/.venv/bin/python -m step4 --config config/config_document_pair.json --dry-run
+./step_4_process/.venv/bin/python -m step4 --config config/config_document_pair.json
+```
+
+결과는 `outputs/step4_persona_vs_no_persona/`에 저장됩니다(`config/config.json` 실행 결과인
+`outputs/step4_persona_ablation/`과 분리).
+
+## 실제로 얼마나 다른 비교가 되는가 (실측 확인)
+
+`step4/prompt_builder._extract_section`으로 양쪽 문서의 "실행용 System Prompt" 절만
+직접 비교해봤습니다(정체성 문장은 제외하고 비교):
+
+| 단계 | persona_0N.md vs task_0N_no_persona_*.md | 의미 |
+| --- | --- | --- |
+| persona_01 / task_01 | **완전히 동일** (정체성 문장만 다름) | 이 단계는 document_pair로 돌려도 identity_marker와 사실상 같은 결과가 나옵니다 |
+| persona_02 / task_02 | **다름** (예: "페르소나 1(KMST-P01)" ↔ "NOPERSONA-01" 등 지시문 자체가 다르게 서술됨) | 실질적으로 다른 비교가 됩니다 |
+| persona_03 / task_03 | **다름** (문장 구조·서술 방식이 전반적으로 다름) | 실질적으로 다른 비교가 됩니다 |
+
+즉 지금 상태로 `document_pair` 모드를 돌리면 persona_02·persona_03 단계에서는 유의미한
+새 비교가 나오지만, persona_01 단계는 `identity_marker` 모드와 크게 다르지 않은 결과가
+나올 가능성이 큽니다. (`load_document_pair_prompt`가 두 절이 정체성 문장 외에 완전히
+같으면 실행 시점에 경고 로그를 남깁니다.)
+
+## 참고: STEP4 cluster 모드에서는 신경 쓰지 않아도 되는 것들
+
+과거(비-cluster 단일사건 설계 시절) README에는 두 가지 "알려진 결함"이 적혀 있었지만,
+지금의 STEP4 cluster 모드에서는 둘 다 실제로 영향이 없습니다:
+
+- **User Prompt Template 필드 차이**: `step4/prompt_builder.build_cluster_user_prompt()`가
+  군집 입력을 코드로 직접 조립하고 `[PREVIOUS_PERSONA_OUTPUT]`/`[RETRIEVED_LEGAL_CONTEXT]`
+  등 모든 필드를 항상 채웁니다 — 두 문서의 "실행용 User Prompt Template" 절(13/15절)은
+  애초에 런타임에 쓰이지 않습니다(persona_0N.md든 이 폴더의 문서든 동일).
+- **법령 검색 컨텍스트**: `[RETRIEVED_LEGAL_CONTEXT]`는 `step4/legal_retrieval.py`가 군집
+  키워드로 검색해서 on/off 양쪽에 동일한 쿼리로 한 번만 주입합니다 — 문서 본문에 적힌
+  법령 조문 목록(1~11절)과 무관합니다.
+
+즉 이 두 문서 세트의 실질적 차이는 오직 "실행용 System Prompt" 절(위 표)에서만 결정됩니다.

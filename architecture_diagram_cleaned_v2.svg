@@ -1,201 +1,182 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1500" viewBox="0 0 2400 1500" role="img" aria-labelledby="title desc">
-<title id="title">해양사고 분류 멀티 모델 아키텍처</title>
-<desc id="desc">공통 데이터, 컨텍스트, 프롬프트 처리 후 OpenAI Cloud 또는 Local LLM으로 분기하고 공통 출력 검증으로 합류하는 구조</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1180" viewBox="0 0 2400 1180" role="img" aria-labelledby="title desc">
+<title id="title">LLM 기반 군집 레이블링 아키텍처</title>
+<desc id="desc">군집 데이터와 페르소나 자산을 입력받아, 정체성 유무 두 조건으로 3단계 페르소나 체인을 로컬 LLM에서 실행하고, 출력 검증과 정량 비교로 마무리하는 구조</desc>
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F8FAFC"/><stop offset="1" stop-color="#EEF4FA"/></linearGradient>
   <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#0F172A" flood-opacity=".09"/></filter>
   <filter id="soft" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0F172A" flood-opacity=".09"/></filter>
   <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="9.1" markerHeight="9.1" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1L9 5L1 9Z" fill="#64748B"/></marker>
   <marker id="mainArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10.4" markerHeight="10.4" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1L9 5L1 9Z" fill="#2563EB"/></marker>
+  <marker id="onArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10.4" markerHeight="10.4" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1L9 5L1 9Z" fill="#4338CA"/></marker>
+  <marker id="offArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="10.4" markerHeight="10.4" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1L9 5L1 9Z" fill="#B91C1C"/></marker>
   <style>
     text{font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Noto Sans KR","Segoe UI",sans-serif}
     .section{fill:#fff;stroke-width:2;filter:url(#shadow)}
     .card{fill:#fff;stroke:#D6E0EA;stroke-width:1.5;filter:url(#soft)}
-    .title{font-size:18px;font-weight:800;fill:#172033}
-    .sub{font-size:14px;font-weight:550;fill:#64748B}
-    .code{font-family:"SFMono-Regular",Consolas,monospace;font-size:14px;fill:#334155;font-weight:600}
-    .st{font-size:22px;font-weight:850;fill:#0F172A}
-    .ss{font-size:13px;font-weight:750;letter-spacing:1.1px}
-    .num{font-size:16px;font-weight:850;fill:#fff;text-anchor:middle}
-    /* color grammar: blue = backbone flow between the 6 numbered stages; gray solid = wiring inside a stage; gray dashed = config/parameter injection inside a stage */
-    .edge{fill:none;stroke:#94A3B8;stroke-width:1.8;marker-end:url(#arrow)}
-    .softEdge{fill:none;stroke:#94A3B8;stroke-width:1.6;stroke-dasharray:6 6;marker-end:url(#arrow)}
-    .mainEdge{fill:none;stroke:#2563EB;stroke-width:2.8;marker-end:url(#mainArrow)}
-    .branchEdge{fill:none;stroke:#2563EB;stroke-width:2.6;marker-end:url(#mainArrow)}
-    .routeLabel{font-size:13px;font-weight:850;fill:#2563EB}
+    .title{font-size:16px;font-weight:800;fill:#172033}
+    .sub{font-size:12.5px;font-weight:550;fill:#64748B}
+    .st{font-size:20px;font-weight:850;fill:#0F172A}
+    .ss{font-size:12px;font-weight:750;letter-spacing:1px}
+    .num{font-size:15px;font-weight:850;fill:#fff;text-anchor:middle}
+    /* color grammar: blue = backbone flow between numbered stages; gray solid = wiring inside a stage;
+       gray dashed = config/근거 결합; indigo = identity_on 경로; red = identity_off 경로 */
+    .edge{fill:none;stroke:#94A3B8;stroke-width:1.7;marker-end:url(#arrow)}
+    .softEdge{fill:none;stroke:#94A3B8;stroke-width:1.5;stroke-dasharray:6 6;marker-end:url(#arrow)}
+    .mainEdge{fill:none;stroke:#2563EB;stroke-width:2.6;marker-end:url(#mainArrow)}
+    .onEdge{fill:none;stroke:#4338CA;stroke-width:2.2;marker-end:url(#onArrow)}
+    .offEdge{fill:none;stroke:#B91C1C;stroke-width:2.2;marker-end:url(#offArrow)}
+    .routeLabel{font-size:12px;font-weight:850}
   </style>
 </defs>
-<rect width="2400" height="1500" fill="url(#bg)"/>
-<circle cx="2250" cy="-20" r="330" fill="#DBEAFE" opacity=".5"/><circle cx="80" cy="1490" r="270" fill="#CCFBF1" opacity=".4"/>
-<text x="70" y="68" font-size="17" font-weight="800" fill="#2563EB" letter-spacing="2.5">MULTI-MODEL CLASSIFICATION PIPELINE</text>
-<text x="70" y="120" font-size="42" font-weight="880" fill="#172033">해양사고 원인 분류 멀티 모델 아키텍처</text>
-<text x="70" y="158" font-size="19" fill="#64748B">공통 Grounding과 Prompt Builder를 거쳐 Cloud·Local 모델로 분기하고, 단일 Output Guardrail로 응답을 표준화</text>
-<line x1="70" y1="194" x2="2330" y2="194" stroke="#CBD5E1" stroke-width="2"/>
+<rect width="2400" height="1180" fill="url(#bg)"/>
+<circle cx="2250" cy="-20" r="300" fill="#DBEAFE" opacity=".5"/><circle cx="80" cy="1160" r="230" fill="#CCFBF1" opacity=".4"/>
+<text x="70" y="60" font-size="16" font-weight="800" fill="#2563EB" letter-spacing="2.5">LLM baseline · PERSONA-BASED CLUSTER LABELING</text>
+<text x="70" y="108" font-size="38" font-weight="880" fill="#172033">군집 기반 사고원인 레이블링 아키텍처</text>
+<text x="70" y="142" font-size="17" fill="#64748B">군집 데이터와 3종 페르소나를 입력받아, 정체성 유무 두 조건으로 동일한 3단계 체인을 로컬 LLM에서 실행하고 비교한다</text>
+<line x1="70" y1="172" x2="2330" y2="172" stroke="#CBD5E1" stroke-width="2"/>
 
-<!-- section panels -->
-<rect class="section" x="50" y="225" width="260" height="1190" rx="25" stroke="#93C5FD"/>
-<rect class="section" x="335" y="225" width="420" height="1190" rx="25" stroke="#5EEAD4"/>
-<rect class="section" x="780" y="225" width="375" height="1190" rx="25" stroke="#C4B5FD"/>
-<rect class="section" x="1180" y="225" width="230" height="1190" rx="25" stroke="#A5B4FC"/>
-<rect class="section" x="1435" y="225" width="410" height="565" rx="25" stroke="#FCD34D"/>
-<rect class="section" x="1435" y="850" width="410" height="565" rx="25" stroke="#67E8F9"/>
-<rect class="section" x="1870" y="225" width="480" height="1190" rx="25" stroke="#FDA4AF"/>
+<!-- section panels: 6 sections, single row -->
+<rect class="section" x="50" y="200" width="260" height="940" rx="25" stroke="#93C5FD"/>
+<rect class="section" x="335" y="200" width="330" height="940" rx="25" stroke="#5EEAD4"/>
+<rect class="section" x="690" y="200" width="290" height="940" rx="25" stroke="#C4B5FD"/>
+<rect class="section" x="1005" y="200" width="560" height="940" rx="25" stroke="#A5B4FC"/>
+<rect class="section" x="1590" y="200" width="330" height="940" rx="25" stroke="#FDA4AF"/>
+<rect class="section" x="1945" y="200" width="405" height="940" rx="25" stroke="#FCD34D"/>
 
 <!-- headers -->
-<g><circle cx="85" cy="270" r="21" fill="#2563EB"/><text class="num" x="85" y="276">1</text><text class="st" x="118" y="265">데이터·클러스터링</text><text class="ss" x="118" y="292" fill="#2563EB">DATA LAYER</text></g>
-<g><circle cx="370" cy="270" r="21" fill="#0D9488"/><text class="num" x="370" y="276">2</text><text class="st" x="403" y="265">Grounding &amp; Context</text><text class="ss" x="403" y="292" fill="#0D9488">CONTEXT ENGINEERING</text></g>
-<g><circle cx="815" cy="270" r="21" fill="#7C3AED"/><text class="num" x="815" y="276">3</text><text class="st" x="848" y="265">Prompt Engineering</text><text class="ss" x="848" y="292" fill="#7C3AED">COMMON PROMPT</text></g>
-<g><circle cx="1215" cy="270" r="21" fill="#4F46E5"/><text class="num" x="1215" y="276">4</text><text class="st" x="1248" y="265">Gateway</text><text class="ss" x="1248" y="292" fill="#4F46E5">MODEL ROUTER</text></g>
-<g><circle cx="1470" cy="270" r="21" fill="#D97706"/><text class="num" x="1470" y="276">5A</text><text class="st" x="1503" y="265">OpenAI Cloud</text><text class="ss" x="1503" y="292" fill="#D97706">CLOUD INFERENCE</text></g>
-<g><circle cx="1470" cy="895" r="21" fill="#0891B2"/><text class="num" x="1470" y="901">5B</text><text class="st" x="1503" y="890">Local LLM</text><text class="ss" x="1503" y="917" fill="#0891B2">DGXSPARK</text></g>
-<g><circle cx="1905" cy="270" r="21" fill="#E11D48"/><text class="num" x="1905" y="276">6</text><text class="st" x="1938" y="265">Output Guardrail</text><text class="ss" x="1938" y="292" fill="#E11D48">COMMON VALIDATION</text></g>
+<g><circle cx="85" cy="245" r="20" fill="#2563EB"/><text class="num" x="85" y="251">1</text><text class="st" x="117" y="240">입력 자산</text><text class="ss" x="117" y="266" fill="#2563EB">CLUSTER &amp; CORPUS INPUT</text></g>
+<g><circle cx="370" cy="245" r="20" fill="#0D9488"/><text class="num" x="370" y="251">2</text><text class="st" x="402" y="240">페르소나 준비</text><text class="ss" x="402" y="266" fill="#0D9488">PERSONA &amp; TAXONOMY PREP</text></g>
+<g><circle cx="725" cy="245" r="20" fill="#7C3AED"/><text class="num" x="725" y="251">3</text><text class="st" x="757" y="240">군집 프롬프트 구성</text><text class="ss" x="757" y="266" fill="#7C3AED">PROMPT ASSEMBLY</text></g>
+<g><circle cx="1040" cy="245" r="20" fill="#4F46E5"/><text class="num" x="1040" y="251">4</text><text class="st" x="1072" y="240">페르소나 체인 실행</text><text class="ss" x="1072" y="266" fill="#4F46E5">LOCAL PERSONA CHAIN</text></g>
+<g><circle cx="1625" cy="245" r="20" fill="#E11D48"/><text class="num" x="1625" y="251">5</text><text class="st" x="1657" y="240">출력 검증</text><text class="ss" x="1657" y="266" fill="#E11D48">SCHEMA VALIDATION</text></g>
+<g><circle cx="1980" cy="245" r="20" fill="#D97706"/><text class="num" x="1980" y="251">6</text><text class="st" x="2012" y="240">정량 분석·리포트</text><text class="ss" x="2012" y="266" fill="#D97706">ABLATION &amp; REPORT</text></g>
 
-<!-- connectors: color grammar applied consistently, every path anchored to true box edges, zero box crossings -->
+<!-- Section 1: input assets -->
+<g>
+  <rect class="card" x="75" y="300" width="210" height="105" rx="16"/><rect x="75" y="300" width="6" height="105" rx="3" fill="#2563EB"/>
+  <text class="title" x="98" y="335">군집 결과</text><text class="sub" x="98" y="360">K-means 군집 5개</text><text class="sub" x="98" y="380">(문서 818건 → 5개 그룹)</text>
+  <rect class="card" x="75" y="425" width="210" height="105" rx="16"/><rect x="75" y="425" width="6" height="105" rx="3" fill="#3B82F6"/>
+  <text class="title" x="98" y="460">군집 키워드</text><text class="sub" x="98" y="485">빈도 상위·특징 상위</text><text class="sub" x="98" y="505">군집별 통계</text>
+  <rect class="card" x="75" y="550" width="210" height="105" rx="16"/><rect x="75" y="550" width="6" height="105" rx="3" fill="#60A5FA"/>
+  <text class="title" x="98" y="585">대표 문장 원문</text><text class="sub" x="98" y="610">군집별 표본 문서의</text><text class="sub" x="98" y="630">사고 경위 발췌</text>
+  <rect class="card" x="75" y="675" width="210" height="105" rx="16"/><rect x="75" y="675" width="6" height="105" rx="3" fill="#93C5FD"/>
+  <text class="title" x="98" y="710">법령·행정규칙 코퍼스</text><text class="sub" x="98" y="735">해양안전심판원 관련</text><text class="sub" x="98" y="755">법령 10종 + 국제기준</text>
+</g>
+
+<!-- Section 2: persona & taxonomy prep -->
+<g>
+  <rect class="card" x="360" y="300" width="280" height="115" rx="16"/><text class="title" x="384" y="335">페르소나 3종 정의</text><text class="sub" x="384" y="360">사실·증거 구조화</text><text class="sub" x="384" y="380">인과관계·법령 검증</text><text class="sub" x="384" y="400">원인기여도·레이블링</text>
+  <rect class="card" x="360" y="430" width="280" height="95" rx="16"/><text class="title" x="384" y="463">정체성 선언 표시</text><text class="sub" x="384" y="488">"이 페르소나는 ~이다" 문구를</text><text class="sub" x="384" y="506">본문과 분리해 표시</text>
+  <rect x="360" y="540" width="280" height="130" rx="19" fill="#F0FDFA" stroke="#2DD4BF" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="384" y="572" font-size="17" font-weight="850" fill="#0F766E">정체성 유무 버전 생성</text>
+  <text class="sub" x="384" y="598">정체성 포함본 · 정체성 제거본</text>
+  <text class="sub" x="384" y="618">두 버전을 만들고, 정체성 부분</text>
+  <text class="sub" x="384" y="638">외에는 완전히 동일한지 검증</text>
+  <text class="sub" x="384" y="658">(무결성 확인 실패 시 중단)</text>
+  <rect class="card" x="360" y="695" width="280" height="90" rx="16"/><text class="title" x="384" y="726">KMST 공식 분류체계</text><text class="sub" x="384" y="750">사고원인 대분류·세부항목</text><text class="sub" x="384" y="768">(최종 레이블 후보 목록)</text>
+</g>
+
+<!-- Section 3: prompt assembly -->
+<g>
+  <rect class="card" x="715" y="300" width="240" height="95" rx="16"/><text class="title" x="738" y="333">군집 컨텍스트 결합</text><text class="sub" x="738" y="358">키워드 + 대표 문장을</text><text class="sub" x="738" y="376">하나의 입력으로 구성</text>
+  <rect class="card" x="715" y="410" width="240" height="95" rx="16"/><text class="title" x="738" y="443">관련 법령 근거 검색</text><text class="sub" x="738" y="468">군집 내용과 관련된</text><text class="sub" x="738" y="486">조문을 근사 검색해 첨부</text>
+  <rect class="card" x="715" y="520" width="240" height="95" rx="16"/><text class="title" x="738" y="553">이전 단계 결과 연결</text><text class="sub" x="738" y="578">체인 상 앞 페르소나의</text><text class="sub" x="738" y="596">출력을 다음 입력에 포함</text>
+  <rect class="card" x="715" y="630" width="240" height="95" rx="16"/><text class="title" x="738" y="663">후보 레이블 결합</text><text class="sub" x="738" y="688">최종 단계에서만</text><text class="sub" x="738" y="706">KMST 분류체계 첨부</text>
+  <rect x="715" y="745" width="240" height="80" rx="18" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="738" y="778" font-size="16" font-weight="850" fill="#6D28D9">군집 단위 프롬프트</text>
+  <text class="sub" x="738" y="802">군집 5개 × 조건 2개 조립</text>
+</g>
+
+<!-- Section 4: persona chain execution (biggest section, on/off branch) -->
+<g>
+  <!-- condition split -->
+  <rect x="1030" y="300" width="230" height="55" rx="14" fill="#EEF2FF" stroke="#4338CA" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="1145" y="333" font-size="16" font-weight="850" fill="#3730A3" text-anchor="middle">조건 A · 정체성 포함</text>
+  <rect x="1290" y="300" width="230" height="55" rx="14" fill="#FEF2F2" stroke="#B91C1C" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="1405" y="333" font-size="16" font-weight="850" fill="#991B1B" text-anchor="middle">조건 B · 정체성 제거</text>
+
+  <!-- identical 3-stage chain under each condition -->
+  <rect class="card" x="1030" y="380" width="230" height="88" rx="14"/><text class="title" x="1050" y="410" font-size="15">① 사실·패턴 구조화</text><text class="sub" x="1050" y="434">군집 대표 문장에서</text><text class="sub" x="1050" y="452">반복되는 사실·증거 추출</text>
+  <rect class="card" x="1290" y="380" width="230" height="88" rx="14"/><text class="title" x="1310" y="410" font-size="15">① 사실·패턴 구조화</text><text class="sub" x="1310" y="434">동일 작업, 정체성 문구만 없음</text>
+
+  <rect class="card" x="1030" y="495" width="230" height="88" rx="14"/><text class="title" x="1050" y="525" font-size="15">② 원인 후보 검증</text><text class="sub" x="1050" y="549">추출된 사실을 바탕으로</text><text class="sub" x="1050" y="567">대표 원인의 인과·법령 정합성 확인</text>
+  <rect class="card" x="1290" y="495" width="230" height="88" rx="14"/><text class="title" x="1310" y="525" font-size="15">② 원인 후보 검증</text><text class="sub" x="1310" y="549">동일 작업, 정체성 문구만 없음</text>
+
+  <rect class="card" x="1030" y="610" width="230" height="88" rx="14"/><text class="title" x="1050" y="640" font-size="15">③ 레이블 확정</text><text class="sub" x="1050" y="664">검증된 원인을 KMST</text><text class="sub" x="1050" y="682">공식 분류체계에 매핑</text>
+  <rect class="card" x="1290" y="610" width="230" height="88" rx="14"/><text class="title" x="1310" y="640" font-size="15">③ 레이블 확정</text><text class="sub" x="1310" y="664">동일 작업, 정체성 문구만 없음</text>
+
+  <!-- local inference engine: 두 조건이 하나로 합류하는 공유 박스 (좌우 대칭 진입) -->
+  <rect x="1030" y="750" width="490" height="150" rx="18" fill="#EEF2FF" stroke="#6366F1" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="1275" y="782" font-size="16" font-weight="850" fill="#3730A3" text-anchor="middle">단일 로컬 모델 추론 (조건 A·B 공유)</text>
+  <text class="sub" x="1052" y="810">외부 API 호출 없음</text>
+  <text class="sub" x="1052" y="832">결정론적 디코딩(재현성 우선)</text>
+  <text class="sub" x="1052" y="854">과도한 반복 생성 억제</text>
+  <text class="sub" x="1052" y="876">항목을 하나씩 순차 처리</text>
+</g>
+
+<!-- Section 5: output validation -->
+<g>
+  <rect class="card" x="1615" y="300" width="280" height="95" rx="16"/><circle cx="1650" cy="333" r="17" fill="#FFE4E6"/><text x="1650" y="339" font-size="13" font-weight="850" fill="#BE123C" text-anchor="middle">1</text><text class="title" x="1677" y="339" font-size="15">응답에서 JSON 추출</text>
+  <rect class="card" x="1615" y="410" width="280" height="95" rx="16"/><circle cx="1650" cy="443" r="17" fill="#FFE4E6"/><text x="1650" y="449" font-size="13" font-weight="850" fill="#BE123C" text-anchor="middle">2</text><text class="title" x="1677" y="449" font-size="15">출력 스키마 적합성 검사</text>
+  <rect class="card" x="1615" y="520" width="280" height="95" rx="16"/><circle cx="1650" cy="553" r="17" fill="#FFE4E6"/><text x="1650" y="559" font-size="13" font-weight="850" fill="#BE123C" text-anchor="middle">3</text><text class="title" x="1677" y="559" font-size="15">분류체계 준수 여부 확인</text>
+  <path d="M1755 660L1830 715L1755 770L1680 715Z" fill="#FFF1F2" stroke="#FB7185" stroke-width="3" filter="url(#soft)"/>
+  <text x="1755" y="709" font-size="15" font-weight="850" fill="#9F1239" text-anchor="middle">검증</text><text x="1755" y="730" font-size="15" font-weight="850" fill="#9F1239" text-anchor="middle">통과?</text>
+  <rect x="1615" y="800" width="130" height="90" rx="16" fill="#ECFDF5" stroke="#34D399" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="1638" y="836" font-size="15" font-weight="850" fill="#047857">레이블</text><text x="1638" y="858" font-size="15" font-weight="850" fill="#047857">확정 저장</text>
+  <rect x="1765" y="800" width="130" height="90" rx="16" fill="#FFF7ED" stroke="#FB923C" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="1788" y="836" font-size="15" font-weight="850" fill="#C2410C">실패로</text><text x="1788" y="858" font-size="15" font-weight="850" fill="#C2410C">기록(재시도 없음)</text>
+</g>
+
+<!-- Section 6: analysis & report -->
+<g>
+  <rect class="card" x="1970" y="300" width="355" height="95" rx="16"/><text class="title" x="1992" y="333">재현성 확인</text><text class="sub" x="1992" y="358">동일 입력을 다시 실행해</text><text class="sub" x="1992" y="376">같은 결과가 나오는지 점검</text>
+  <rect class="card" x="1970" y="410" width="355" height="115" rx="16"/><text class="title" x="1992" y="443">조건 간 비교 (핵심)</text><text class="sub" x="1992" y="468">정체성 포함/제거 결과를 군집별로</text><text class="sub" x="1992" y="486">대응비교 — 레이블 변화율·전이 방향·</text><text class="sub" x="1992" y="504">유효성·출력 길이 차이를 통계로 확인</text>
+  <rect class="card" x="1970" y="540" width="355" height="90" rx="16"/><text class="title" x="1992" y="573">체인 단계별 특성</text><text class="sub" x="1992" y="598">단계별 성공률·산출량·</text><text class="sub" x="1992" y="616">분류체계 준수율 요약</text>
+  <rect x="1970" y="645" width="355" height="130" rx="19" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2.5" filter="url(#soft)"/>
+  <text x="1992" y="678" font-size="17" font-weight="850" fill="#92400E">최종 리포트</text>
+  <text class="sub" x="1992" y="704">군집별 최종 레이블 + 근거</text>
+  <text class="sub" x="1992" y="724">조건 비교 결과와 한계 명시</text>
+  <text class="sub" x="1992" y="744">표·그림 포함 산출물</text>
+  <rect class="card" x="1970" y="790" width="355" height="90" rx="16"/><text class="title" x="1992" y="823">알려진 한계 기록</text><text class="sub" x="1992" y="848">단일 실행 기반 비교라는 점,</text><text class="sub" x="1992" y="866">군집 근사 방식의 제약을 명시</text>
+</g>
+
+<!-- connectors: color grammar, section-to-section backbone -->
 <g id="connectors">
-  <!-- Section 1 -> Section 2 (backbone) -->
-  <path class="mainEdge" d="M285 404H320V415H365"/>
-  <path class="mainEdge" d="M285 594H320V615H365"/>
-  <path class="mainEdge" d="M285 784H320V1090H380"/>
-
-  <!-- Section 2 internal (D->E, F->G) -->
-  <path class="edge" d="M545 415H570"/>
-  <path class="edge" d="M545 615H558V780H570"/>
-
-  <!-- Section 2 -> Context Block (routed clear of F / G boxes) -->
-  <path class="edge" d="M455 465V490H345V1030H420V1050"/>
-  <path class="edge" d="M659 465H760V1030H700V1050"/>
-  <path class="edge" d="M659 835V1050"/>
-
-  <!-- Section 2 -> Section 3 (backbone) -->
-  <path class="mainEdge" d="M725 1155H767V850H818"/>
-
-  <!-- Section 3 internal: single top-to-bottom chain into the builder -->
-  <path class="edge" d="M968 420V432"/>
-  <path class="edge" d="M968 517V529"/>
-  <path class="edge" d="M968 614V626"/>
-  <path class="edge" d="M968 711V755"/>
-
-  <!-- Section 3 -> Router (backbone) -->
-  <path class="mainEdge" d="M1118 850H1167V735H1220"/>
-
-  <!-- Router -> Cloud / Local branch (backbone) -->
-  <circle cx="1420" cy="735" r="4" fill="#2563EB"/>
-  <path class="branchEdge" d="M1370 735H1420V415H1465"/>
-  <path class="branchEdge" d="M1420 735V995H1465"/>
-  <rect x="1394" y="380" width="74" height="24" rx="6" fill="#EFF6FF"/>
-  <text class="routeLabel" x="1431" y="397" text-anchor="middle">CLOUD</text>
-  <rect x="1390" y="960" width="70" height="24" rx="6" fill="#ECFEFF"/>
-  <text class="routeLabel" x="1425" y="977" text-anchor="middle" fill="#0891B2">LOCAL</text>
-
-  <!-- Cloud internal -->
-  <path class="softEdge" d="M1675 415H1690"/>
-  <path class="edge" d="M1570 465V545"/>
-  <path class="softEdge" d="M1762 465V730H1835"/>
-  <path class="edge" d="M1570 645V690"/>
-
-  <!-- Local internal -->
-  <path class="softEdge" d="M1695 995H1710"/>
-  <path class="edge" d="M1580 1045V1060"/>
-  <path class="edge" d="M1580 1160V1185"/>
-  <path class="softEdge" d="M1695 1240H1710"/>
-  <path class="edge" d="M1580 1285V1325"/>
-  <path class="edge" d="M1772 1305V1325"/>
-
-  <!-- Cloud & Local -> Output Guardrail (backbone, separate merge lanes) -->
-  <path class="mainEdge" d="M1835 740H1852V400H1900"/>
-  <path class="mainEdge" d="M1835 1360H1864V440H1900"/>
-
-  <!-- Section 6 internal validation chain -->
-  <path class="edge" d="M2060 470V520"/>
-  <path class="edge" d="M2060 620V670"/>
-  <path class="edge" d="M2060 770V820"/>
-  <path class="edge" d="M2060 920V970"/>
-  <path class="edge" d="M2060 1070V1115"/>
-  <path class="edge" d="M1995 1180H1950V1285"/>
-  <path class="edge" d="M2125 1180H2215V1285"/>
-  <text x="1963" y="1173" font-size="13" font-weight="800" fill="#059669" text-anchor="middle">Yes</text>
-  <text x="2140" y="1173" font-size="13" font-weight="800" fill="#EA580C" text-anchor="middle">No</text>
+  <!-- Section 1 -> Section 2 -->
+  <path class="mainEdge" d="M285 470H320V420H355"/>
+  <!-- Section 2 -> Section 3 -->
+  <path class="mainEdge" d="M640 605H675V495H710"/>
+  <!-- Section 3 -> Section 4 -->
+  <path class="mainEdge" d="M955 615H985V430H1025"/>
+  <!-- Section 4 internal: condition -> stage1 -->
+  <path class="onEdge" d="M1145 355V378"/>
+  <path class="offEdge" d="M1405 355V378"/>
+  <!-- stage chain inside each condition -->
+  <path class="onEdge" d="M1145 468V493"/>
+  <path class="offEdge" d="M1405 468V493"/>
+  <path class="onEdge" d="M1145 583V608"/>
+  <path class="offEdge" d="M1405 583V608"/>
+  <!-- both stage columns feed the shared local model (symmetric entry, top edge) -->
+  <path class="onEdge" d="M1145 698V748"/>
+  <path class="offEdge" d="M1405 698V748"/>
+  <!-- Section 4 -> Section 5 -->
+  <path class="mainEdge" d="M1520 800H1555V347H1610"/>
+  <!-- Section 5 internal validation chain -->
+  <path class="edge" d="M1755 395V405"/>
+  <path class="edge" d="M1755 505V515"/>
+  <path class="edge" d="M1755 615V655"/>
+  <path class="edge" d="M1712 745H1680V800"/>
+  <path class="edge" d="M1798 745H1830V800"/>
+  <text x="1665" y="775" font-size="12" font-weight="800" fill="#059669" text-anchor="middle">Yes</text>
+  <text x="1845" y="775" font-size="12" font-weight="800" fill="#EA580C" text-anchor="middle">No</text>
+  <!-- Section 5 -> Section 6 -->
+  <path class="mainEdge" d="M1895 845H1925V347H1965"/>
 </g>
 
-<!-- data cards -->
-<g>
-  <rect class="card" x="75" y="345" width="210" height="118" rx="17"/><rect x="75" y="345" width="6" height="118" rx="3" fill="#2563EB"/>
-  <text class="title" x="100" y="383">재결서 데이터</text><text class="code" x="100" y="418">step1_dataset.jsonl</text>
-  <rect class="card" x="75" y="535" width="210" height="118" rx="17"/><rect x="75" y="535" width="6" height="118" rx="3" fill="#3B82F6"/>
-  <text class="title" x="100" y="573">군집 결과</text><text class="code" x="100" y="608">clusters.csv</text>
-  <rect class="card" x="75" y="725" width="210" height="118" rx="17"/><rect x="75" y="725" width="6" height="118" rx="3" fill="#60A5FA"/>
-  <text class="title" x="100" y="763">군집 특징어</text><text class="code" x="100" y="798">cluster_keywords.csv</text>
-</g>
-
-<!-- context -->
-<g>
-  <rect class="card" x="365" y="365" width="180" height="100" rx="17"/><text class="title" x="388" y="404">문서 ID 그룹화</text><text class="sub" x="388" y="436">군집별 문서 매핑</text>
-  <rect class="card" x="570" y="365" width="178" height="100" rx="17"/><text class="title" x="590" y="402" font-size="15">Distinctive 키워드</text><text class="sub" x="590" y="434">최대 8개</text>
-  <rect class="card" x="365" y="565" width="180" height="100" rx="17"/><text class="title" x="388" y="604">Neyman 표본 배분</text><text class="sub" x="388" y="636">8·10·5·15·3</text>
-  <rect class="card" x="570" y="725" width="178" height="110" rx="17"/><text class="title" x="590" y="764">대표 문장 추출</text><text class="sub" x="590" y="796">UTF-8 300자</text><text class="sub" x="590" y="819">절단</text>
-  <rect x="380" y="1050" width="345" height="210" rx="21" fill="#F0FDFA" stroke="#2DD4BF" stroke-width="2.5" filter="url(#soft)"/>
-  <rect x="380" y="1050" width="345" height="48" rx="21" fill="#0F766E"/><path d="M380 1075V1098H725V1075Z" fill="#0F766E"/>
-  <text x="402" y="1082" font-size="18" font-weight="850" fill="#fff">Cluster Context Block</text>
-  <text class="code" x="410" y="1140">cluster · n_docs</text><text class="code" x="410" y="1180">keywords</text><text class="code" x="410" y="1220">sample_sentences</text>
-</g>
-
-<!-- prompt (single column chain, full-width cards so long English titles never overflow) -->
-<g>
-  <rect class="card" x="818" y="335" width="300" height="85" rx="16"/><text class="title" x="843" y="371">System Prompt</text><text class="sub" x="843" y="399">분류 전문가 역할 고정</text>
-  <rect class="card" x="818" y="432" width="300" height="85" rx="16"/><text class="title" x="843" y="468">Task Instruction</text><text class="sub" x="843" y="496">모든 군집을 빠짐없이 분류</text>
-  <rect class="card" x="818" y="529" width="300" height="85" rx="16"/><text class="title" x="843" y="565">Label Taxonomy</text><text class="sub" x="843" y="593">사고원인 후보 라벨군</text>
-  <rect class="card" x="818" y="626" width="300" height="85" rx="16"/><text class="title" x="843" y="662">Output Contract</text><text class="sub" x="843" y="690">JSON 스키마 · 근거 문장</text>
-  <rect x="818" y="755" width="300" height="190" rx="22" fill="#F5F3FF" stroke="#8B5CF6" stroke-width="3" filter="url(#soft)"/>
-  <text x="843" y="800" font-size="19" font-weight="850" fill="#6D28D9">Grounded Prompt</text>
-  <text x="843" y="824" font-size="19" font-weight="850" fill="#6D28D9">Builder</text>
-  <text class="code" x="843" y="868">lib_llm_common.php</text><text class="sub" x="843" y="900">지시 + 후보 라벨 + 군집 데이터</text>
-  <text class="sub" x="843" y="924">를 결합해 단일 Chat Payload 생성</text>
-</g>
-
-<!-- router -->
-<g>
-  <path d="M1295 635L1370 735L1295 835L1220 735Z" fill="#EEF2FF" stroke="#6366F1" stroke-width="3" filter="url(#soft)"/>
-  <text x="1295" y="724" font-size="18" font-weight="850" fill="#3730A3" text-anchor="middle">실행 모델</text><text x="1295" y="752" font-size="18" font-weight="850" fill="#3730A3" text-anchor="middle">선택</text>
-</g>
-
-<!-- OpenAI -->
-<g>
-  <rect class="card" x="1465" y="365" width="210" height="100" rx="17"/><text class="code" x="1488" y="405" font-size="15">api_llm_label.php</text><text class="sub" x="1488" y="434">Cloud 진입점</text>
-  <rect class="card" x="1690" y="365" width="145" height="100" rx="17"/><text class="title" x="1710" y="401" font-size="15">서버 설정</text><text class="code" x="1710" y="424" font-size="13">API KEY</text><text class="code" x="1710" y="443" font-size="13">MODEL</text>
-  <rect class="card" x="1465" y="545" width="210" height="100" rx="17"/><text class="code" x="1488" y="582">temperature 0.2</text><text class="code" x="1488" y="610">max_tokens 2000</text>
-  <rect x="1465" y="690" width="370" height="100" rx="19" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2.5" filter="url(#soft)"/>
-  <text x="1490" y="730" font-size="19" font-weight="850" fill="#92400E">OpenAI Chat Completions</text><text class="sub" x="1490" y="760">HTTPS + Bearer 인증 · json_object</text>
-</g>
-
-<!-- Local -->
-<g>
-  <rect class="card" x="1465" y="945" width="230" height="100" rx="17"/><text class="title" x="1488" y="982" font-size="16">사전 준비 상태 확인</text><text class="sub" x="1488" y="1014">Health Polling</text>
-  <rect class="card" x="1710" y="945" width="125" height="100" rx="17"/><text class="title" x="1730" y="982" font-size="14">모델 카탈로그</text><text class="sub" x="1730" y="1010" font-size="12">조회·선택</text>
-  <rect class="card" x="1465" y="1060" width="230" height="100" rx="17"/><text class="code" x="1488" y="1100" font-size="13">api_local_llm_label.php</text><text class="sub" x="1488" y="1129">Local 진입점</text>
-  <rect class="card" x="1465" y="1185" width="230" height="100" rx="17"/><text class="title" x="1488" y="1222" font-size="16">Endpoint 검증</text><text class="code" x="1488" y="1254" font-size="13">localhost:8500</text>
-  <rect class="card" x="1710" y="1185" width="125" height="120" rx="17"/><text class="title" x="1730" y="1220" font-size="14">모델 + 표본</text><text class="sub" x="1730" y="1248" font-size="12">Override</text><text class="sub" x="1730" y="1275" font-size="12">timeout 400초</text>
-  <rect x="1465" y="1325" width="370" height="70" rx="18" fill="#ECFEFF" stroke="#06B6D4" stroke-width="2.5" filter="url(#soft)"/>
-  <text x="1490" y="1367" font-size="17" font-weight="850" fill="#0E7490">OpenAI 호환 Chat Completions API</text>
-</g>
-
-<!-- validation -->
-<g>
-  <rect class="card" x="1900" y="370" width="320" height="100" rx="17"/><text class="title" x="1925" y="408">모델 content 추출</text><text class="sub" x="1925" y="440">Cloud·Local 공통 입력</text>
-  <rect class="card" x="1900" y="520" width="320" height="100" rx="17"/><circle cx="1935" cy="570" r="18" fill="#FFE4E6"/><text x="1935" y="576" font-size="14" font-weight="850" fill="#BE123C" text-anchor="middle">1</text><text class="title" x="1965" y="577">Strict JSON Decode</text>
-  <rect class="card" x="1900" y="670" width="320" height="100" rx="17"/><circle cx="1935" cy="720" r="18" fill="#FFE4E6"/><text x="1935" y="726" font-size="14" font-weight="850" fill="#BE123C" text-anchor="middle">2</text><text class="title" x="1965" y="727">코드펜스 제거</text>
-  <rect class="card" x="1900" y="820" width="320" height="100" rx="17"/><circle cx="1935" cy="870" r="18" fill="#FFE4E6"/><text x="1935" y="876" font-size="14" font-weight="850" fill="#BE123C" text-anchor="middle">3</text><text class="title" x="1965" y="877">중복 괄호·따옴표 보정</text>
-  <rect class="card" x="1900" y="970" width="320" height="100" rx="17"/><circle cx="1935" cy="1020" r="18" fill="#FFE4E6"/><text x="1935" y="1026" font-size="14" font-weight="850" fill="#BE123C" text-anchor="middle">4</text><text class="title" x="1965" y="1027">JSON 객체 구간 추출</text>
-  <path d="M2060 1115L2125 1180L2060 1245L1995 1180Z" fill="#FFF1F2" stroke="#FB7185" stroke-width="3" filter="url(#soft)"/>
-  <text x="2060" y="1174" font-size="17" font-weight="850" fill="#9F1239" text-anchor="middle">파싱</text><text x="2060" y="1197" font-size="17" font-weight="850" fill="#9F1239" text-anchor="middle">성공?</text>
-  <rect x="1885" y="1285" width="215" height="105" rx="19" fill="#ECFDF5" stroke="#34D399" stroke-width="2.5" filter="url(#soft)"/>
-  <text x="1908" y="1325" font-size="17" font-weight="850" fill="#047857">표준 성공 응답</text><text class="code" x="1908" y="1358" font-size="13">ok · model · clusters</text>
-  <rect x="2125" y="1285" width="215" height="105" rx="19" fill="#FFF7ED" stroke="#FB923C" stroke-width="2.5" filter="url(#soft)"/>
-  <text x="2148" y="1325" font-size="17" font-weight="850" fill="#C2410C">502 오류 응답</text><text class="code" x="2148" y="1358" font-size="13">error · raw response</text>
-</g>
-
-<line x1="70" y1="1450" x2="2330" y2="1450" stroke="#CBD5E1" stroke-width="1.5"/>
-<circle cx="85" cy="1477" r="6" fill="#2563EB"/><text x="102" y="1483" font-size="14" fill="#64748B">핵심 처리 흐름 (단계 간)</text>
-<line x1="290" y1="1477" x2="330" y2="1477" stroke="#94A3B8" stroke-width="2" /><text x="342" y="1483" font-size="14" fill="#64748B">단계 내부 흐름</text>
-<line x1="500" y1="1477" x2="540" y2="1477" stroke="#94A3B8" stroke-width="2.4" stroke-dasharray="7 7"/><text x="552" y="1483" font-size="14" fill="#64748B">설정·제약 주입</text>
-<text x="2325" y="1483" text-anchor="end" font-size="14" font-weight="650" fill="#94A3B8">Multi-model Architecture · v2.1</text>
+<line x1="70" y1="1120" x2="2330" y2="1120" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="85" cy="1147" r="6" fill="#2563EB"/><text x="102" y="1153" font-size="13" fill="#64748B">핵심 처리 흐름 (단계 간)</text>
+<circle cx="300" cy="1147" r="6" fill="#4338CA"/><text x="317" y="1153" font-size="13" fill="#64748B">정체성 포함 조건 경로</text>
+<circle cx="510" cy="1147" r="6" fill="#B91C1C"/><text x="527" y="1153" font-size="13" fill="#64748B">정체성 제거 조건 경로</text>
+<line x1="720" y1="1147" x2="760" y2="1147" stroke="#94A3B8" stroke-width="2"/><text x="772" y="1153" font-size="13" fill="#64748B">단계 내부 흐름</text>
+<text x="2325" y="1153" text-anchor="end" font-size="13" font-weight="650" fill="#94A3B8">step4 · Persona Cluster Labeling · v3</text>
 </svg>

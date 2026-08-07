@@ -144,10 +144,18 @@ function build_data(): array {
         $topCatsOut = [];
         foreach ($topCats as $cat => $cnt) $topCatsOut[] = ["category" => $cat, "count" => $cnt];
 
+        // 군집별 파일 브라우저(step3-file-browser)용 — id/category/filename만 추리고
+        // index 같은 내부 컬럼은 뺀다. 818건 전체를 다 실어도 문서 하나당 수십 바이트라
+        // 리포트 페이지 크기에 부담이 없다.
+        $docsOut = array_map(fn($d) => [
+            "id" => $d["id"] ?? "", "category" => $d["category"] ?? "", "filename" => $d["filename"] ?? "",
+        ], $docs);
+
         $clustersOut[] = [
             "cluster" => $c, "n_docs" => count($docs), "top_categories" => $topCatsOut,
             "keywords" => $keywordsByCluster[$c] ?? [],
             "wordcloud" => "assets/wordclouds/wordcloud_cluster_{$c}.png",
+            "docs" => $docsOut,
         ];
     }
 

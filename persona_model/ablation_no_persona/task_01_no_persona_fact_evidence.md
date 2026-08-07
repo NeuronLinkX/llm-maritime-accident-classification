@@ -1,3 +1,6 @@
+> ℹ️ 이 문서는 `config/config_document_pair.json`(document_pair 비교 모드)에서
+> identity_off로 실제 사용됩니다. 자세한 내용은 [README.md](README.md) 참고.
+
 # NOPERSONA-01 사실·증거 구조화 작업 지침
 
 이 문서는 `persona_01_fact_evidence_analyst.md`(KMST-P01)와 대조군(ablation) 관계에 있다. 두 문서는 법령 기반, 입력·출력 계약, 수행 지침, 금지사항, JSON 스키마가 완전히 동일하다. 유일한 차이는 이 문서가 "당신은 ~이다"와 같은 페르소나 정체성·역할극 문장을 전혀 쓰지 않고, 모든 지시를 명령문으로만 서술한다는 것이다.
