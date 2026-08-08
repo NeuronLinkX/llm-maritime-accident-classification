@@ -41,6 +41,8 @@ step4/*.lock
 step4/*.pptx
 step4/*.docx
 
+persona/src/.venv
+
 mysql_export/*
 
 outputs/

@@ -24,6 +24,7 @@ require_once __DIR__ . "/lib_step3_data.php";
 
 use function Step4Persona\output_exists;
 use function Step4Persona\final_labels_by_cluster;
+use function Step4Persona\full_chain_by_cluster;
 use function Step4Persona\schema_validity;
 use function Step4Persona\ablation_comparison;
 use function Step4Persona\determinism_check;
@@ -32,6 +33,7 @@ use function Step4Persona\kmst_taxonomy_flat;
 
 $hasData = output_exists();
 $byCluster = $hasData ? final_labels_by_cluster() : [];
+$fullChain = $hasData ? full_chain_by_cluster() : [];
 $schemaValidity = $hasData ? schema_validity() : [];
 $ablation = $hasData ? ablation_comparison() : [];
 $determinism = $hasData ? determinism_check() : null;
@@ -61,6 +63,109 @@ function tier_class(?float $rate): string {
     if ($rate >= 0.9) return "tier-ok";
     if ($rate >= 0.6) return "tier-warn";
     return "tier-bad";
+}
+
+function numOrNull($v): ?float {
+    if ($v === null || $v === "" || strtolower((string)$v) === "nan") return null;
+    return is_numeric($v) ? (float)$v : null;
+}
+
+function isTrue($v): bool {
+    $s = (string)($v ?? "");
+    return $s === "True" || $s === "1" || $s === "true";
+}
+
+/**
+ * "왜 이 군집의 on/off 결과가 같거나 다른지"를 사람이 그대로 읽고 말할 수 있는 문장 +
+ * 근거 수치로 정리한다. persona_03 최종 레이블만 봐서는 알 수 없고, 앞 단계(사실 추출·
+ * 원인 후보 검증)의 개수와 반복루프 재시도 이력까지 봐야 설명 가능하다(2026-08-08
+ * cluster_4 분석에서 확인됨 — 재시도로 인해 on/off가 서로 다른 디코딩 파라미터로
+ * 생성된 경우가 있어, 그 경우는 순수한 "정체성 효과"라고 단정할 수 없다).
+ */
+function cluster_diagnostics(array $stages, ?string $primaryOn, ?string $primaryOff): array {
+    $stageMeta = [
+        "persona_01" => ["label" => "사실·패턴 구조화", "counts" => ["n_facts" => "사실", "n_evidence" => "증거", "n_actors" => "행위자", "n_vessels" => "선박"]],
+        "persona_02" => ["label" => "원인 후보 검증", "counts" => ["n_cause_candidates" => "원인후보", "n_unresolved_issues" => "미해결쟁점"]],
+        "persona_03" => ["label" => "레이블 확정", "counts" => ["n_causes" => "최종원인수"]],
+    ];
+
+    $rows = [];
+    $retryDiffStages = [];
+    $countDiffStages = [];
+    $anyInvalid = false;
+
+    foreach ($stageMeta as $stage => $meta) {
+        $on = $stages[$stage]["identity_on"] ?? null;
+        $off = $stages[$stage]["identity_off"] ?? null;
+
+        $countsOn = [];
+        $countsOff = [];
+        $countDiffers = false;
+        foreach ($meta["counts"] as $col => $label) {
+            $vOn = $on ? numOrNull($on[$col] ?? null) : null;
+            $vOff = $off ? numOrNull($off[$col] ?? null) : null;
+            $countsOn[] = "$label " . ($vOn === null ? "?" : (string)(int)$vOn);
+            $countsOff[] = "$label " . ($vOff === null ? "?" : (string)(int)$vOff);
+            if ($vOn !== null && $vOff !== null && $vOn !== $vOff) $countDiffers = true;
+        }
+        if ($countDiffers) $countDiffStages[] = $meta["label"];
+
+        $retryOn = $on ? isTrue($on["repetition_retry_attempted"] ?? null) : false;
+        $retryOff = $off ? isTrue($off["repetition_retry_attempted"] ?? null) : false;
+        if ($retryOn !== $retryOff) $retryDiffStages[] = $meta["label"];
+
+        $retryDesc = function (?array $row) use (&$retryDesc) {
+            if (!$row || !isTrue($row["repetition_retry_attempted"] ?? null)) return "재시도 없음(1차 시도로 완료)";
+            $ok = isTrue($row["repetition_retry_succeeded"] ?? null) ? "성공" : "실패";
+            $ov = $row["repetition_retry_overrides"] ?? "";
+            return "재시도 $ok" . ($ov !== "" ? "({$ov})" : "");
+        };
+
+        // CSV에서 빈 값(예: schema_valid=False라 taxonomy_valid를 아예 안 매긴 행)은 빈 문자열로
+        // 들어오는데, PHP는 "" !== null이라 그대로 두면 "미준수"로 잘못 판정된다 — null로 정규화.
+        $normTax = fn($v) => ($v === null || $v === "") ? null : $v;
+        $taxOn = $on ? $normTax($on["taxonomy_valid"] ?? null) : null;
+        $taxOff = $off ? $normTax($off["taxonomy_valid"] ?? null) : null;
+        if ($stage === "persona_03") {
+            if ($taxOn !== null && !isTrue($taxOn)) $anyInvalid = true;
+            if ($taxOff !== null && !isTrue($taxOff)) $anyInvalid = true;
+        }
+
+        $rows[] = [
+            "stage" => $stage, "label" => $meta["label"],
+            "counts_on" => implode(" · ", $countsOn), "counts_off" => implode(" · ", $countsOff),
+            "tokens_on" => $on ? ($on["completion_tokens"] ?? "-") : "-",
+            "tokens_off" => $off ? ($off["completion_tokens"] ?? "-") : "-",
+            "retry_on" => $retryDesc($on), "retry_off" => $retryDesc($off),
+            "valid_on" => $on ? isTrue($on["schema_valid"] ?? null) : null,
+            "valid_off" => $off ? isTrue($off["schema_valid"] ?? null) : null,
+            "taxonomy_on" => $stage === "persona_03" ? $taxOn : null,
+            "taxonomy_off" => $stage === "persona_03" ? $taxOff : null,
+        ];
+    }
+
+    $labelChanged = ($primaryOn !== null && $primaryOff !== null && $primaryOn !== $primaryOff);
+
+    $sentence = [];
+    if (!$labelChanged) {
+        $sentence[] = "최종 주원인이 두 조건에서 동일(\"" . ($primaryOn ?: "-") . "\")합니다.";
+    } else {
+        $sentence[] = "최종 주원인이 identity_on(\"" . ($primaryOn ?: "-") . "\")과 identity_off(\"" . ($primaryOff ?: "-") . "\") 사이에 다릅니다.";
+    }
+    if ($retryDiffStages) {
+        $sentence[] = "그런데 " . implode(", ", $retryDiffStages) . " 단계에서 두 조건 중 한쪽만 반복루프 재시도(다른 frequency_penalty/repetition_penalty로 재생성)를 거쳤습니다 — 이 군집의 on/off 차이는 순수한 정체성 프레이밍 효과만으로 설명할 수 없고, 재시도로 인한 디코딩 파라미터 차이가 섞여 있습니다.";
+    } elseif ($countDiffStages) {
+        $sentence[] = implode(", ", $countDiffStages) . " 단계에서 두 조건이 뽑아낸 개수 자체가 달라, 그 차이가 이후 단계까지 이어진 것으로 보입니다(재시도는 없었으므로 순수 정체성 프레이밍 차이로 해석 가능).";
+    } elseif ($labelChanged) {
+        $sentence[] = "앞 단계 개수·재시도 이력은 두 조건이 동일한데도 최종 레이블이 달라졌습니다 — 이 경우는 정체성 문구 자체가 레이블 확정(persona_03) 단계의 판단에 직접 영향을 준 사례로 볼 수 있습니다.";
+    } else {
+        $sentence[] = "앞 단계 개수·재시도 이력도 전부 동일합니다 — 증거가 뚜렷해 정체성 유무와 무관하게 같은 결론으로 수렴한 것으로 해석할 수 있습니다.";
+    }
+    if ($anyInvalid) {
+        $sentence[] = "또한 한쪽 조건의 최종 레이블에 KMST 공식 22개 세부항목에 없는 값(분류체계 미준수)이 포함돼 있어 해석에 주의가 필요합니다.";
+    }
+
+    return ["rows" => $rows, "sentence" => implode(" ", $sentence), "label_changed" => $labelChanged];
 }
 ?>
 <!DOCTYPE html>
@@ -109,6 +214,8 @@ function tier_class(?float $rate): string {
   .badge.warn { color: var(--warn-fg); background: var(--warn-bg); border-color: transparent; }
   .badge.on { color: var(--on-fg); border-color: var(--on-fg); }
   .badge.off { color: var(--off-fg); border-color: var(--off-fg); }
+  .model-provenance { font-size: 12px; color: var(--ink-500); margin-top: 10px; padding: 8px 12px; border: 1px dashed var(--line-strong); border-radius: 8px; max-width: 1200px; line-height: 1.5; }
+  .model-provenance strong { color: var(--ink-700); }
 
   section.card { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 20px 22px; margin-bottom: 20px; }
   section.card > h2 { font-size: 16px; margin: 0 0 4px; }
@@ -127,13 +234,30 @@ function tier_class(?float $rate): string {
   .cond-cell.on .cond-label { color: var(--on-fg); }
   .cond-cell.off .cond-label { color: var(--off-fg); }
   .cond-cell .primary-label { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
-  .cond-cell .secondary-labels { font-size: 11.5px; color: var(--ink-500); margin-bottom: 6px; }
   .cond-cell .cell-meta { font-size: 11px; color: var(--ink-500); display: flex; gap: 10px; flex-wrap: wrap; }
   .tag-invalid { color: var(--bad-fg); font-weight: 700; }
   .tag-off-taxonomy { color: var(--warn-fg); font-weight: 700; }
   .diff-flag { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
   .diff-flag.changed { background: var(--warn-bg); color: var(--warn-fg); }
   .diff-flag.same { background: var(--ok-bg); color: var(--ok-fg); }
+
+  /* ---- 근거 자료(step4-evidence) — 군집별 on/off 체인 단계 수치 펼침 목록 ---- */
+  .evidence-cluster { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; background: var(--paper-50); overflow: hidden; }
+  .evidence-cluster summary {
+    cursor: pointer; padding: 12px 14px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    list-style: none; background: var(--panel);
+  }
+  .evidence-cluster summary::-webkit-details-marker { display: none; }
+  .evidence-cluster summary::before { content: "▸ "; color: var(--sea-600); }
+  .evidence-cluster[open] summary::before { content: "▾ "; }
+  .evidence-cluster .ec-cluster { font-weight: 800; color: var(--sea-700); font-size: 13.5px; }
+  .evidence-cluster .ec-sentence { font-size: 12.5px; color: var(--ink-700); flex: 1 1 300px; }
+  .evidence-wrap { padding: 4px 14px 14px; overflow-x: auto; }
+  table.evidence-tbl { border-collapse: collapse; width: 100%; font-size: 12px; min-width: 720px; }
+  table.evidence-tbl th, table.evidence-tbl td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.evidence-tbl thead th { background: var(--paper-50); color: var(--ink-700); font-weight: 700; white-space: nowrap; }
+  table.evidence-tbl .ec-stage { font-weight: 700; white-space: nowrap; }
+  table.evidence-tbl .ec-stage-id { font-weight: 400; color: var(--ink-500); font-size: 10.5px; }
 
   /* 유효성 표 */
   .valid-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
@@ -244,6 +368,12 @@ function tier_class(?float $rate): string {
       <?php if (!empty($manifest["finished_at"])): ?><span class="badge">완료: <?= htmlspecialchars((string)$manifest["finished_at"]) ?></span><?php endif; ?>
     </div>
     <?php endif; ?>
+    <p class="model-provenance">
+      페르소나(persona_01/02/03) 문서 학습·생성 모델: <strong>Qwen3-14B</strong> ·
+      이 페이지의 레이블링 결과 도출(실제 실행) 모델: <strong>Qwen2.5-14B-Instruct</strong>
+      — 두 모델이 다르므로 아래 "단계·조건별 출력 유효성"의 think_leak_rate(Qwen3 전용 사고형 태그 누출률)는
+      이 실행(Qwen2.5)에서는 해당 없음(항상 0)으로 표시됩니다.
+    </p>
   </header>
 
   <?php if (!$hasData): ?>
@@ -343,42 +473,67 @@ function tier_class(?float $rate): string {
               <?php if ($cls === "on" && $changed): ?><span class="diff-flag changed" title="정체성 문구 외 입력(증거·스키마)은 동일한데 주 레이블이 달라짐 — 정체성 프레이밍이 이 군집의 판단에 영향을 준 사례로 해석 가능">off와 다름</span><?php endif; ?>
               <?php if ($cls === "on" && !$changed && $offPrimary !== null): ?><span class="diff-flag same" title="정체성 문구만 다르고 나머지 입력(증거·스키마)은 동일 — 증거가 뚜렷해 정체성 유무와 무관하게 같은 레이블로 수렴">off와 동일</span><?php endif; ?>
             </div>
-            <?php
-              // 같은 label_code가 여러 근거로 나뉘어 중복 출력된 경우, 화면에서는 최고 점수 하나로 병합해 보여준다
-              // (원본 모델 출력 자체의 병합은 persona_03 프롬프트/스키마에 지시했지만, 과거 산출물 호환을 위해 방어적으로도 처리)
-              $allCauses = json_decode($row["analytic_contribution"] ?? "[]", true) ?: [];
-              $merged = [];
-              foreach ($allCauses as $c) {
-                $code = $c["label_code"] ?? "?";
-                $score = $c["score"] ?? null;
-                if (!isset($merged[$code]) || ($score ?? -1) > ($merged[$code]["score"] ?? -1)) {
-                  $merged[$code]["score"] = $score;
-                }
-                $merged[$code]["count"] = ($merged[$code]["count"] ?? 0) + 1;
-              }
-              $mergedList = [];
-              foreach ($merged as $code => $info) {
-                $mergedList[] = ["label_code" => $code, "score" => $info["score"], "count" => $info["count"]];
-              }
-              usort($mergedList, fn($a, $b) => ($b["score"] ?? 0) <=> ($a["score"] ?? 0));
-              $secondaryCauses = array_values(array_filter($mergedList, fn($c) => $c["label_code"] !== $primary));
-            ?>
-            <?php if ($secondaryCauses): ?>
-            <div class="secondary-labels">
-              부원인(점수순):
-              <?php foreach ($secondaryCauses as $c): ?>
-                <span style="display:inline-block;margin-right:8px;"><?= htmlspecialchars($c["label_code"]) ?> (<?= fmt($c["score"], 2) ?>)<?php if ($c["count"] > 1): ?><span title="같은 코드로 병합된 근거 개수"> ×<?= (int)$c["count"] ?></span><?php endif; ?></span>
-              <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
             <div class="cell-meta">
               <span>원인 개수: <?= htmlspecialchars((string)($row["n_causes"] ?? "N/A")) ?></span>
               <span>출력 토큰: <?= htmlspecialchars((string)($row["completion_tokens"] ?? "N/A")) ?></span>
             </div>
+            <?php // 부원인(root_cause_secondary) 표시는 뺐음 — 2026-08-08 cluster_4 분석에서
+                  // 확인됐듯 부원인 자리가 실제 레이블이 아니라 NOT_SCORABLE 플레이스홀더(_UNKNOWN_
+                  // 등)로 채워지는 경우가 있어, 이 카드에 그대로 보여주면 오해 소지가 있다. 부원인이
+                  // 왜/어떻게 갈렸는지는 아래 "근거 자료" 절에서 수치로 설명한다. ?>
           <?php endif; ?>
         </div>
       <?php endforeach; ?>
     </div>
+    <?php endforeach; ?>
+  </section>
+
+  <section class="card" id="step4-evidence">
+    <h2>근거 자료 — 군집별 on/off 결과가 왜 같거나 다른지</h2>
+    <p class="sub">
+      "군집별 최종 레이블 비교"는 결과(무엇이 나왔는지)만 보여줍니다. 이 절은 <b>왜</b> 그 결과가
+      나왔는지를 체인 앞 단계(persona_01 사실추출 → persona_02 원인검증 → persona_03 레이블확정)의
+      실제 개수와 반복루프 재시도 이력으로 추적한 것입니다. 군집을 눌러 펼치면 단계별 on/off 수치를
+      볼 수 있습니다.
+    </p>
+    <?php foreach ($fullChain as $clusterId => $stages):
+        $finalOn = $byCluster[$clusterId]["identity_on"] ?? null;
+        $finalOff = $byCluster[$clusterId]["identity_off"] ?? null;
+        $diag = cluster_diagnostics($stages, $finalOn["root_cause_primary"] ?? null, $finalOff["root_cause_primary"] ?? null);
+    ?>
+    <details class="evidence-cluster" <?= $diag["label_changed"] ? "open" : "" ?>>
+      <summary>
+        <span class="ec-cluster"><?= htmlspecialchars($clusterId) ?></span>
+        <span class="diff-flag <?= $diag["label_changed"] ? "changed" : "same" ?>"><?= $diag["label_changed"] ? "레이블 변경" : "레이블 동일" ?></span>
+        <span class="ec-sentence"><?= htmlspecialchars($diag["sentence"]) ?></span>
+      </summary>
+      <div class="evidence-wrap">
+        <table class="evidence-tbl">
+          <thead>
+            <tr>
+              <th>단계</th>
+              <th>identity_on — 개수</th>
+              <th>identity_off — 개수</th>
+              <th>identity_on — 재시도</th>
+              <th>identity_off — 재시도</th>
+              <th>출력 토큰 on/off</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($diag["rows"] as $r): ?>
+            <tr>
+              <td class="ec-stage"><?= htmlspecialchars($r["label"]) ?> <span class="ec-stage-id">(<?= htmlspecialchars($r["stage"]) ?>)</span></td>
+              <td><?= htmlspecialchars($r["counts_on"]) ?><?php if ($r["stage"] === "persona_03"): ?> · 분류체계<?= $r["taxonomy_on"] === null ? " N/A" : (isTrue($r["taxonomy_on"]) ? " 준수" : " 미준수⚠") ?><?php endif; ?></td>
+              <td><?= htmlspecialchars($r["counts_off"]) ?><?php if ($r["stage"] === "persona_03"): ?> · 분류체계<?= $r["taxonomy_off"] === null ? " N/A" : (isTrue($r["taxonomy_off"]) ? " 준수" : " 미준수⚠") ?><?php endif; ?></td>
+              <td><?= htmlspecialchars($r["retry_on"]) ?></td>
+              <td><?= htmlspecialchars($r["retry_off"]) ?></td>
+              <td><?= htmlspecialchars((string)$r["tokens_on"]) ?> / <?= htmlspecialchars((string)$r["tokens_off"]) ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </details>
     <?php endforeach; ?>
   </section>
 

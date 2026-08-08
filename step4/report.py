@@ -67,6 +67,61 @@ def _fig_transition_heatmap(ablation_metrics: dict, out_path: Path) -> bool:
     return True
 
 
+def _fig_pipeline_architecture(out_path: Path) -> bool:
+    """페르소나 생성(persona/src, Qwen3, BM25, 1회) -> STEP4 실행(step4/, Qwen2.5, 근사검색,
+    조건당 반복) -> 리포트까지 전체 흐름을 고정 SVG로 그린다. 실행마다 값이 바뀌는 데이터가
+    아니라 코드 구조 자체를 보여주는 도식이라, 다른 두 _fig_* 함수와 달리 labels_df 등
+    입력 데이터가 필요 없다."""
+    gray = ("#F1EFE8", "#5F5E5A", "#2C2C2A")
+    purple = ("#EEEDFE", "#534AB7", "#26215C")
+    teal = ("#E1F5EE", "#0F6E56", "#04342C")
+    coral = ("#FAECE7", "#993C1D", "#4A1B0C")
+
+    def node(x, y, w, h, title, subtitle, palette):
+        fill, stroke, text = palette
+        cx = x + w / 2
+        return (
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="1"/>'
+            f'<text x="{cx}" y="{y + 22}" text-anchor="middle" font-size="14" font-weight="700" '
+            f'fill="{text}" font-family="Noto Sans CJK KR, sans-serif">{title}</text>'
+            f'<text x="{cx}" y="{y + 40}" text-anchor="middle" font-size="12" '
+            f'fill="{stroke}" font-family="Noto Sans CJK KR, sans-serif">{subtitle}</text>'
+        )
+
+    def arrow(x1, y1, x2, y2):
+        return (
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#8a897f" '
+            f'stroke-width="1.5" marker-end="url(#arrow)"/>'
+        )
+
+    parts = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="680" height="752" viewBox="0 0 680 752">',
+        '<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" '
+        'markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" '
+        'stroke="#8a897f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>',
+        '<rect x="0" y="0" width="680" height="752" fill="#ffffff"/>',
+        node(60, 40, 260, 56, "법령 원문 코퍼스", "국내 10개 + 국제기준 1개", gray),
+        node(360, 40, 260, 56, "생성 지침", "페르소나 3종 생성 규칙", gray),
+        arrow(190, 96, 190, 136),
+        arrow(490, 96, 490, 136),
+        node(60, 136, 560, 56, "페르소나 생성기", "Qwen3-14B · BM25 검색, 1회 실행", purple),
+        arrow(340, 192, 340, 232),
+        node(60, 232, 560, 56, "페르소나 설계 문서", "역할 지시문 + 정책·스키마 고정 파일", gray),
+        arrow(340, 288, 340, 348),
+        node(60, 348, 560, 56, "근사검색 + on/off 조립", "같은 법령자료 재사용 · Qwen2.5, 매 호출 반복", teal),
+        arrow(340, 404, 340, 444),
+        node(60, 444, 560, 56, "LLM 추론(vLLM)", "3단계 순차 · 반복루프 시 보정재시도", coral),
+        arrow(340, 500, 340, 540),
+        node(60, 540, 560, 56, "검증 · 저장", "flat/labels.parquet · csv", gray),
+        arrow(340, 596, 340, 656),
+        node(60, 656, 560, 56, "리포트 · 비교분석", "benchmark_report.md · PPT · 웹 뷰어", gray),
+        '</svg>',
+    ]
+    out_path.write_text("\n".join(parts), encoding="utf-8")
+    return True
+
+
 def _fmt(x, nd=3) -> str:
     if x is None:
         return "N/A"
@@ -96,6 +151,7 @@ def generate_report(
     has_trans_fig = _fig_transition_heatmap(
         all_metrics["ablation_comparison"], figures_dir / "root_cause_primary_transition.png"
     )
+    has_arch_fig = _fig_pipeline_architecture(figures_dir / "pipeline_architecture.svg")
 
     lines: list[str] = []
     lines.append("# STEP4 페르소나 identity ablation — 벤치마크 리포트\n")
@@ -111,6 +167,26 @@ def generate_report(
     lines.append(f"- {unit_label} 수: {doc_count}")
     lines.append(f"- 총 실행(호출) 수: {doc_count} x 3단계 x 2조건 = {doc_count * 6}")
     lines.append(f"- config sha256: `{config.sha256}`\n")
+
+    if has_arch_fig:
+        lines.append("## 1-1. 전체 파이프라인 구조 (페르소나 생성 -> STEP4 실행 -> 리포트)\n")
+        lines.append("![pipeline](figures/pipeline_architecture.svg)\n")
+        lines.append(
+            "- **설계 시점(위 3칸, 1회)**: `persona/src/generate_personas.py`가 법령 원문 "
+            "코퍼스(`persona/KMST/`)와 생성 지침(`prompt.txt`)을 입력받아 Qwen3-14B + BM25 검색으로 "
+            "페르소나 설계 문서(`persona_model/*.md`)를 만든다. 이 단계는 모델 가중치를 재학습하지 "
+            "않는다 — 법령을 읽고 색인하고 검색 기반으로 컨텍스트를 주입해 프롬프트 문서를 생성할 뿐이다."
+        )
+        lines.append(
+            "- **실행 시점(아래 4칸, 조건당 반복)**: STEP4(`step4/`)가 그 설계 문서를 읽어, "
+            "매 호출(군집 x 단계 x 조건)마다 같은 법령 코퍼스에서 관련 조문을 다시 검색하고, "
+            "identity_on/off 문구만 다른 프롬프트를 조립해 Qwen2.5-14B-Instruct로 추론한다."
+        )
+        lines.append(
+            "- 페르소나가 특정 모델에 학습된 지식이 아니라 텍스트 문서이기 때문에, 문서를 만들 때 쓴 "
+            "모델(Qwen3)과 실행에 쓴 모델(Qwen2.5)이 달라도 문제없이 그대로 재사용할 수 있었다."
+        )
+        lines.append("")
 
     lines.append("## 2. 결정성 확인 결과\n")
     byte_rate = determinism_result.get("byte_identical_rate")
@@ -239,6 +315,17 @@ def generate_report(
     lines.append(
         "- [RETRIEVED_LEGAL_CONTEXT]는 임베딩 기반 RAG가 아니라 조문 단위 키워드 부분일치 근사 검색이다."
     )
+    lines.append(
+        "- 모델이 인용한 근거가 실제 검색된 [SOURCE] 목록 안에 있는지 자동 검증하는 코드가 없다 — "
+        "프롬프트로 '존재하는 근거만 인용하라'고 지시할 뿐, 할루시네이션(법령 지어내기) 여부를 "
+        "코드로 검증하지 않는다."
+    )
+    lines.append(
+        "- STEP4 실행 시점의 법령 검색(`step4/legal_retrieval.py`)은 페르소나 생성 시점의 BM25 "
+        "검색(`persona/src/generate_personas.py`)보다 단순한 키워드 집합 교집합 개수 세기라서, "
+        "'가장 관련 있는 조문'을 놓칠 가능성이 생성 단계보다 크다. 다만 identity_on/off 양쪽에 "
+        "동일하게 적용되므로 두 조건 간 비교 자체는 이 한계의 영향을 받지 않는다."
+    )
     identity_on_tokens = manifest.get("identity_prompt_token_diff")
     if identity_on_tokens:
         lines.append(f"- identity_on/off 프롬프트 토큰 수 차이: {identity_on_tokens}")
@@ -258,6 +345,82 @@ def generate_report(
             "100% 결정성 전제에서 벗어난 의도적 예외로 간주해야 한다: "
             f"{[{'doc_id': c['doc_id'], 'stage': c['stage'], 'condition': c['condition'], 'succeeded': c['succeeded'], 'attempts_used': c.get('attempts_used')} for c in repetition_retry_cases]}"
         )
+    lines.append("")
+
+    lines.append("## 8-1. 이 실험이 증명하는 것과 증명하지 않는 것\n")
+    lines.append(
+        "**증명하는 것**: 똑같은 법령 발췌 · 똑같은 군집 데이터를 주고, '역할 선언' 문장(정체성 "
+        "블록) 하나만 있고 없고를 바꿨을 때 레이블링 행동(최종 레이블 · 서술 길이 · 생성 안정성)이 "
+        "달라지는가."
+    )
+    lines.append(
+        "**증명하지 않는 것**: '법을 학습한 전문가 모델 vs 법을 모르는 일반 모델'의 비교가 "
+        "아니다. identity_on/off 두 조건 모두 완전히 동일한 실제 법령 발췌([RETRIEVED_LEGAL_CONTEXT])를 "
+        "받는다 — off 조건도 법을 '모르는' 게 아니라, 단지 '당신은 KMST-P0N이다' 역할 프레이밍 "
+        "문장만 빠져 있을 뿐이다. 이 실험을 '법 지식을 학습시킨 페르소나가 효과 있는가'의 근거로 "
+        "인용하려면 이 구분을 반드시 명시해야 한다."
+    )
+    lines.append("**신뢰도를 뒷받침하는 것**:")
+    lines.append("- 주원인(root_cause_primary) 레이블 100% KMST 공식 22항목 매칭 (on/off 동일)")
+    lines.append("- greedy 디코딩 byte 단위 재현성 100% (2. 결정성 확인 결과)")
+    lines.append(
+        "- 법령 발췌가 실제 조문 원문(허구 생성이 아님), `[SOURCE DOC-XX-CXXXX]` 형식으로 출처 표기"
+    )
+    lines.append("**진짜 한계(정체성이 학습됐는지 여부와는 무관하다)**:")
+    lines.append("- gold set 부재로 정확도(F1 등) 자체는 평가 불가 — 이번 결과는 '일치도'이지 '정확도'가 아니다.")
+    lines.append("- 모델이 인용한 근거가 실제 검색된 [SOURCE] 안에 있는지 자동 검증하는 코드가 없다(할루시네이션 미검증).")
+    lines.append(
+        "- STEP4 실행 시점의 법령 검색이 페르소나 생성 시점(BM25)보다 단순하다 — 아래 8-2, 8-3 참고."
+    )
+    lines.append("")
+
+    lines.append("## 8-2. 법령 코퍼스 재사용 확인 (생성 단계 <-> 실행 단계)\n")
+    lines.append(
+        "페르소나 설계 문서(`persona_model/*.md`)를 만들 때 쓴 법령 원문과, STEP4 레이블링 실행 "
+        "시점에 검색하는 법령 원문은 물리적으로 동일한 파일이다:"
+    )
+    lines.append("- `config/config.json`의 `paths.persona_dir`가 `persona_model`을 가리킨다.")
+    lines.append(
+        "- `step4/pipeline.py`의 `legal_retrieval.load_legal_chunks(Path(persona_dir) / \"data\", "
+        "logger)`가 실제로 읽는 경로는 `persona_model/data/`다."
+    )
+    lines.append(
+        "- `persona_model/data/`는 페르소나 생성에 쓴 원본 코퍼스 `persona/KMST/`와 diff 결과 "
+        "0건 — 바이트 단위로 완전히 동일한 11개 문서(국내 법령/행정규칙 10개 + 국제기준 1개)다."
+    )
+    lines.append("\n다만 그 파일을 검색하는 알고리즘은 두 단계가 다르다:\n")
+    lines.append("| | 페르소나 생성 단계 | STEP4 실행 단계 |")
+    lines.append("|---|---|---|")
+    lines.append(
+        "| 코드 | `persona/src/generate_personas.py`의 `BM25Index` 클래스 | "
+        "`step4/legal_retrieval.py`의 `retrieve()` 함수 |"
+    )
+    lines.append(
+        "| 알고리즘 | BM25 (TF-IDF 가중치 + 문서 길이 정규화) | 단순 키워드 집합 교집합 개수만 셈(가중치 없음) |"
+    )
+    lines.append(
+        "| 커버리지 보장 | 필수 문서 10개 각각 최소 1개 청크 포함을 강제 | 없음 — 전체 청크 중 점수 상위 5개만 반환 |"
+    )
+    lines.append("")
+
+    lines.append("## 8-3. 왜 이게 RAG(Retrieval-Augmented Generation)가 아닌가\n")
+    lines.append(
+        "일반적으로 'RAG'라고 부르는 구조는 문서를 임베딩 벡터로 변환하고 질의도 임베딩으로 바꿔서, "
+        "벡터 유사도(코사인 거리 등)로 의미적으로 가까운 청크를 찾는다 — 단어가 정확히 겹치지 "
+        "않아도('선박' vs '배') 의미가 비슷하면 찾아낼 수 있다."
+    )
+    lines.append(
+        "이 시스템의 두 검색 단계(생성 시 BM25, 실행 시 키워드 집합 교집합) 모두 임베딩을 전혀 "
+        "쓰지 않는다. BM25는 단어 통계(빈도 · 희귀도 · 문서 길이) 기반이고, STEP4 실행 시점 검색은 "
+        "그보다도 단순한 '겹치는 단어 개수'만 센다 — 둘 다 텍스트 표면 형태(단어 자체)가 일치해야 "
+        "찾아지는 어휘적(lexical) 검색이지, 의미를 이해하고 찾는 의미적(semantic) 검색이 아니다. "
+        "그래서 '선박'이라는 단어를 안 쓰고 '배'라고만 쓴 조문은, 실제로 관련 있어도 놓칠 수 있다."
+    )
+    lines.append(
+        "이 프로젝트에서 이미 임베딩(SBERT)을 쓰는 STEP1~3(문서 군집화)과 달리, STEP4의 법령 "
+        "검색만큼은 임베딩을 쓰지 않는 경량 근사 구현이다 — 위 '## 8. 한계'의 "
+        "'[RETRIEVED_LEGAL_CONTEXT]는 임베딩 기반 RAG가 아니라...' 문구가 가리키는 정확한 의미다."
+    )
     lines.append("")
 
     lines.append("## 9. 재현 정보\n")

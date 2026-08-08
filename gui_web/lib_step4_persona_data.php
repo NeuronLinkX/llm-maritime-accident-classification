@@ -26,9 +26,14 @@ function load_labels(): array {
     $rows = [];
     $fh = fopen($path, "r");
     if ($fh === false) return [];
-    $header = fgetcsv($fh);
+    // 마지막 인자("")로 PHP 기본 이스케이프 문자(\)를 끈다 — labels.csv는 pandas.to_csv가
+    // 표준 CSV(RFC4180, 겹따옴표만으로 이스케이프)로 썼는데, PHP fgetcsv 기본값은 백슬래시를
+    // 이스케이프 문자로 취급해 raw_text 컬럼 안의 \" 시퀀스(모델이 낸 JSON 원문)를 만나면
+    // 그 행을 여러 개의 깨진 행으로 쪼갠다. 그 결과 컬럼 수가 안 맞아 아래 continue에 걸려
+    // 통째로 누락되는 행이 생겼었다(2026-08-08 cluster_2 persona_01/02 identity_off 확인).
+    $header = fgetcsv($fh, 0, ",", "\"", "");
     if ($header === false) { fclose($fh); return []; }
-    while (($line = fgetcsv($fh)) !== false) {
+    while (($line = fgetcsv($fh, 0, ",", "\"", "")) !== false) {
         if (count($line) !== count($header)) continue;
         $rows[] = array_combine($header, $line);
     }
@@ -45,6 +50,25 @@ function final_labels_by_cluster(): array {
         $condition = $row["condition"] ?? "";
         if ($cluster === "" || $condition === "") continue;
         $out[$cluster][$condition] = $row;
+    }
+    ksort($out);
+    return $out;
+}
+
+/**
+ * 체인 전 단계(persona_01/02/03) x 조건(on/off) 전체 행을 재구성한다 —
+ * cluster_id => stage => condition => row. "왜 on/off 결과가 갈렸는지"를
+ * persona_03만 봐서는 알 수 없고, 그 앞 단계(사실 추출·원인 후보 검증)와
+ * 반복루프 재시도 이력까지 봐야 설명 가능하기 때문에 전체 행이 필요하다.
+ */
+function full_chain_by_cluster(): array {
+    $out = [];
+    foreach (load_labels() as $row) {
+        $cluster = $row["doc_id"] ?? "";
+        $stage = $row["stage"] ?? "";
+        $condition = $row["condition"] ?? "";
+        if ($cluster === "" || $stage === "" || $condition === "") continue;
+        $out[$cluster][$stage][$condition] = $row;
     }
     ksort($out);
     return $out;
