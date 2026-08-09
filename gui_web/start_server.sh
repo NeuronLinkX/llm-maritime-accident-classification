@@ -1,5 +1,6 @@
 #!/bin/bash
-# report.php를 9000번 포트에서 서비스하는 스크립트
+# simulation.html(단일 파일 STEP1~4 시뮬레이션)을 9000번 포트에서 서비스하는 스크립트.
+# index.php가 루트 요청을 simulation.html로 넘겨준다.
 
 PORT=9000
 DIR="/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/gui_web"

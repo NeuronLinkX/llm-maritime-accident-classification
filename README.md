@@ -11,7 +11,7 @@ STEP 4  페르소나 체인 레이블링   로컬 LLM 단일 모델, 정체성 �
 
 ![architecture_diagram_cleaned_v2](./architecture_diagram_cleaned_v2.svg)
 
-STEP 1~4 결과는 통합 웹 리포트(`gui_web/report.php`, 정적 스냅샷은 `gui_web/report.html`) 한 페이지에서 확인할 수 있습니다.
+STEP 1~4 결과는 단일 정적 파일 `gui_web/simulation.html` 한 페이지에서 확인할 수 있습니다. 서버 없이 브라우저에서 바로 열리며, 파일 하나만 전달해도 동일한 시뮬레이션을 그대로 볼 수 있습니다.
 
 ### 전체 프로세스
 

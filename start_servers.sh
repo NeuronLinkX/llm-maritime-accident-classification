@@ -47,7 +47,7 @@ trap cleanup EXIT INT TERM
 echo "[start_servers] 기존에 떠 있는 프로세스 정리 중… (이전 실행이 남긴 게 있으면 여기서 내려감)"
 REPORT_PORT="$REPORT_PORT" LOCAL_LLM_PORT="$LOCAL_LLM_PORT" "$SCRIPT_DIR/stop_servers.sh"
 
-echo "[start_servers] 통합 리포트(PHP) 시작 → http://${REPORT_HOST}:${REPORT_PORT}/report.php (VPN 등 원격 접속 가능)"
+echo "[start_servers] STEP1~4 시뮬레이션 시작 → http://${REPORT_HOST}:${REPORT_PORT}/ (simulation.html, VPN 등 원격 접속 가능)"
 (cd "$SCRIPT_DIR/gui_web" && php -S "${REPORT_HOST}:${REPORT_PORT}") &
 PIDS+=("$!")
 
