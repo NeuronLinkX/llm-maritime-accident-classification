@@ -111,10 +111,7 @@ _CLUSTER_MODE_NOTE = {
     "persona_02": (
         "페르소나 1이 정리한 이 군집의 패턴을 바탕으로, 이 군집을 대표할 만한 원인 후보들의 "
         "인과관계와 법령 정합성을 검증하십시오. 대표 문장 하나에서만 나온 원인을 군집 전체의 "
-        "대표 원인으로 확정하지 말고, 반복성·근거 수를 함께 고려하십시오. "
-        "각 원인(causes[] 항목)마다 그 근거가 된 fact_id/evidence_id를 fact_ids/evidence_ids에 "
-        "반드시 채우십시오. 실제로 연결할 근거가 없다면 support_level을 INSUFFICIENT로 낮추십시오 "
-        "— support_level이 HIGH나 MEDIUM인데 fact_ids와 evidence_ids가 둘 다 비어 있으면 안 됩니다."
+        "대표 원인으로 확정하지 말고, 반복성·근거 수를 함께 고려하십시오."
     ),
     "persona_03": (
         "페르소나 2가 검증한 이 군집의 대표 원인 후보를 KMST 공식 분류체계(아래 [CANDIDATE_LABELS])의 "
@@ -131,11 +128,9 @@ def cluster_mode_preamble(persona_id: str) -> str:
         "서로 다른 사건에서 뽑힌 대표 문장 여러 개입니다. '사건', '이 사건' 같은 표현은 "
         "'이 군집을 대표하는 사건 패턴'으로 해석하십시오. 특정 사건번호나 개별 사건의 세부사항을 "
         "지어내지 마십시오. 타임라인(timeline)은 군집에 적용되지 않으므로 빈 배열로 두십시오. "
-        "actor_ids/evidence_ids/fact_ids 같은 ID 배열은 각 항목당 최대 5개까지만, 실제로 "
-        "존재하는 근거의 ID만 인용하십시오. 이 군집의 대표 문장은 최대 15개뿐이므로, "
-        "EVIDENCE_16처럼 대표 문장 수보다 큰 일련번호를 스스로 만들어 순차적으로 나열하지 "
-        "마십시오 — 다만 F001·EV001처럼 앞자리를 0으로 채운 표기 자체는 이 규칙과 무관하니 "
-        "실제 근거가 있다면 그대로 인용해도 됩니다. "
+        "actor_ids/evidence_ids/fact_ids 같은 ID 배열은 각 항목당 최대 5개까지만 실제로 "
+        "존재하는 근거만 인용하고, 그 이상 순차적으로 번호를 늘려가며 나열하지 마십시오 — "
+        "이 군집의 대표 문장은 최대 15개뿐이므로 ID가 두 자릿수를 넘어가면 잘못된 것입니다. "
         + note
     )
 
@@ -165,13 +160,6 @@ def build_cluster_user_prompt(
     candidate_labels_block: str | None = None,
 ) -> str:
     prev_json = json.dumps(previous_output, ensure_ascii=False) if previous_output is not None else "null"
-    # 2026-08-13: 대표 문장에 [S01], [S02]... 번호를 매기고 P01에 "source_location에 실제로
-    # 기록하라"고 지시했던 시도를 되돌렸다 — A/B 테스트로 직접 확인한 결과(diag_ab_test.py),
-    # 이 조합이 cluster_0/persona_01/identity_on의 반복출력 폭주(512토큰 정상 완료 -> 4096토큰
-    # 공백 반복)를 유발하는 것으로 확정됐다. repetition/frequency penalty가 걸린 상태에서
-    # "순차적으로 번호 매겨진 항목을 인용하라"는 과제 자체가, 이 코드베이스에 이미 알려진
-    # 취약점(EVIDENCE_604... 식 순차 ID 이탈, config.json의 frequency_penalty 관련 note 참고)을
-    # 다시 건드리는 것으로 보인다. 번호 매기기 없이 원래 형식("- 문장")으로 복귀.
     samples_block = "\n".join(f"- {s}" for s in sample_sentences) if sample_sentences else "(대표 문장 없음)"
 
     parts = [
