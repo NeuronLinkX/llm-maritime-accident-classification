@@ -281,10 +281,47 @@ def generate_report(
         if stage == "persona_03" and "taxonomy_valid" in sdf.columns:
             tv = sdf["taxonomy_valid"].dropna()
             if len(tv):
-                extra = f", cause_label_taxonomy 준수율={_fmt(tv.mean())}"
+                extra = f", cause_label_taxonomy 준수율(문서 단위, all-or-nothing)={_fmt(tv.mean())}"
         lines.append(f"- **{stage}**: schema_valid 평균={_fmt(sdf['schema_valid'].mean())}, "
                       f"평균 completion_tokens={_fmt(sdf['completion_tokens'].mean(), 1)}{extra}")
     lines.append("")
+
+    # 문서 단위(all-or-nothing) 준수율 하나만 보면 label_code 3개 중 1개만 틀려도 문서 전체가
+    # False로 잡혀, 작은 표본에서 조건 간 차이가 실제보다 과장되어 보일 수 있다
+    # (test_20260811/07_유효성지표_생성량분석_정리.md 6-5/6-6절). 항목(label_code) 단위 준수율과
+    # 조건별(identity_on/off) 분리를 추가로 보여줘, 리포트만 봐도 두 지표가 다른 결론을 줄 수
+    # 있다는 사실이 드러나게 한다.
+    p03 = labels_df[labels_df["stage"] == "persona_03"]
+    if not p03.empty and {"n_taxonomy_ok_items", "n_taxonomy_total_items"}.issubset(p03.columns):
+        lines.append("### 6-1. KMST 분류체계 준수율 — 문서 단위 vs 항목 단위, 조건별 분리\n")
+        lines.append("| condition | 문서 수 | 문서 단위 준수율(all-or-nothing) | 항목 단위 준수율(label_code 개별) |")
+        lines.append("|---|---|---|---|")
+        for condition, cdf in p03.groupby("condition"):
+            tv = cdf["taxonomy_valid"].dropna()
+            doc_rate = _fmt(tv.mean()) if len(tv) else "N/A"
+            ok_sum = cdf["n_taxonomy_ok_items"].dropna().sum()
+            total_sum = cdf["n_taxonomy_total_items"].dropna().sum()
+            item_rate = _fmt(ok_sum / total_sum) if total_sum else "N/A"
+            lines.append(f"| {condition} | {len(cdf)} | {doc_rate} | {item_rate} |")
+        tv_all = p03["taxonomy_valid"].dropna()
+        ok_all = p03["n_taxonomy_ok_items"].dropna().sum()
+        total_all = p03["n_taxonomy_total_items"].dropna().sum()
+        lines.append(
+            f"| **전체** | **{len(p03)}** | **{_fmt(tv_all.mean()) if len(tv_all) else 'N/A'}** | "
+            f"**{_fmt(ok_all / total_all) if total_all else 'N/A'}** |"
+        )
+        lines.append(
+            "\n주의: 두 지표는 서로 다른 질문에 답한다 — 문서 단위는 \"이 문서가 완벽했는가\", "
+            "항목 단위는 \"이름표 하나하나가 맞았는가\"다. 표본이 작을수록(군집 수가 적을수록) "
+            "두 지표가 크게 갈라질 수 있으므로 둘 중 하나만 인용하지 말 것.\n"
+        )
+        if "taxonomy_defect_retry_attempted" in p03.columns:
+            n_attempted = int(p03["taxonomy_defect_retry_attempted"].fillna(0).sum())
+            n_succeeded = int(p03["taxonomy_defect_retry_succeeded"].fillna(0).sum())
+            lines.append(
+                f"- taxonomy 결측 결함(confidence는 정상인데 label_code가 빈 경우) 교정 재시도: "
+                f"{n_attempted}건 시도, {n_succeeded}건 성공\n"
+            )
 
     lines.append("## 7. 실패 사례 분석 (상위 10건)\n")
     fail_df = labels_df[~labels_df["schema_valid"].fillna(False)].head(10)

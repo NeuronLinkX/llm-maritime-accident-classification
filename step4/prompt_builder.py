@@ -106,12 +106,19 @@ def build_system_prompt(
 _CLUSTER_MODE_NOTE = {
     "persona_01": (
         "이 군집에서 반복적으로 관찰되는 상황 요소와 증거 패턴만 facts/evidence로 채택하십시오. "
-        "대표 문장 하나에만 등장하는 특이 사항을 이 군집 전체의 사실인 것처럼 일반화하지 마십시오."
+        "대표 문장 하나에만 등장하는 특이 사항을 이 군집 전체의 사실인 것처럼 일반화하지 마십시오. "
+        "[CLUSTER_SAMPLE_SENTENCES]의 각 문장 앞에는 [S01], [S02]... 번호가 붙어 있습니다. "
+        "facts[]/evidence[]의 source_location에는 그 근거가 된 문장 번호(예: \"S03\")를 실제로 "
+        "기록하십시오 — \"[CLUSTER_SAMPLE_SENTENCES]\"라는 섹션 태그 자체를 그대로 베껴 쓰지 "
+        "마십시오."
     ),
     "persona_02": (
         "페르소나 1이 정리한 이 군집의 패턴을 바탕으로, 이 군집을 대표할 만한 원인 후보들의 "
         "인과관계와 법령 정합성을 검증하십시오. 대표 문장 하나에서만 나온 원인을 군집 전체의 "
-        "대표 원인으로 확정하지 말고, 반복성·근거 수를 함께 고려하십시오."
+        "대표 원인으로 확정하지 말고, 반복성·근거 수를 함께 고려하십시오. "
+        "각 원인(causes[] 항목)마다 그 근거가 된 fact_id/evidence_id를 fact_ids/evidence_ids에 "
+        "반드시 채우십시오. 실제로 연결할 근거가 없다면 support_level을 INSUFFICIENT로 낮추십시오 "
+        "— support_level이 HIGH나 MEDIUM인데 fact_ids와 evidence_ids가 둘 다 비어 있으면 안 됩니다."
     ),
     "persona_03": (
         "페르소나 2가 검증한 이 군집의 대표 원인 후보를 KMST 공식 분류체계(아래 [CANDIDATE_LABELS])의 "
@@ -128,9 +135,11 @@ def cluster_mode_preamble(persona_id: str) -> str:
         "서로 다른 사건에서 뽑힌 대표 문장 여러 개입니다. '사건', '이 사건' 같은 표현은 "
         "'이 군집을 대표하는 사건 패턴'으로 해석하십시오. 특정 사건번호나 개별 사건의 세부사항을 "
         "지어내지 마십시오. 타임라인(timeline)은 군집에 적용되지 않으므로 빈 배열로 두십시오. "
-        "actor_ids/evidence_ids/fact_ids 같은 ID 배열은 각 항목당 최대 5개까지만 실제로 "
-        "존재하는 근거만 인용하고, 그 이상 순차적으로 번호를 늘려가며 나열하지 마십시오 — "
-        "이 군집의 대표 문장은 최대 15개뿐이므로 ID가 두 자릿수를 넘어가면 잘못된 것입니다. "
+        "actor_ids/evidence_ids/fact_ids 같은 ID 배열은 각 항목당 최대 5개까지만, 실제로 "
+        "존재하는 근거의 ID만 인용하십시오. 이 군집의 대표 문장은 최대 15개뿐이므로, "
+        "EVIDENCE_16처럼 대표 문장 수보다 큰 일련번호를 스스로 만들어 순차적으로 나열하지 "
+        "마십시오 — 다만 F001·EV001처럼 앞자리를 0으로 채운 표기 자체는 이 규칙과 무관하니 "
+        "실제 근거가 있다면 그대로 인용해도 됩니다. "
         + note
     )
 
@@ -160,7 +169,16 @@ def build_cluster_user_prompt(
     candidate_labels_block: str | None = None,
 ) -> str:
     prev_json = json.dumps(previous_output, ensure_ascii=False) if previous_output is not None else "null"
-    samples_block = "\n".join(f"- {s}" for s in sample_sentences) if sample_sentences else "(대표 문장 없음)"
+    # 각 대표 문장에 S01, S02...로 번호를 매긴다 — 이 번호가 없으면 facts[]/evidence[]의
+    # source_location에 실제 위치 대신 "[CLUSTER_SAMPLE_SENTENCES]" 섹션 태그 자체를 그대로
+    # 베껴 쓰는 사례가 있었다(persona_model/SCHEMA_GUIDE.md 3절 참고). 번호를 주면 그 자리에
+    # "S03"처럼 실제로 인용 가능한 값을 쓸 수 있어, P01의 근거 인용 품질과 P02가 이어받는
+    # fact_ids/evidence_ids 연결 품질에 함께 도움이 된다.
+    samples_block = (
+        "\n".join(f"- [S{i:02d}] {s}" for i, s in enumerate(sample_sentences, start=1))
+        if sample_sentences
+        else "(대표 문장 없음)"
+    )
 
     parts = [
         "[CLUSTER_METADATA]",

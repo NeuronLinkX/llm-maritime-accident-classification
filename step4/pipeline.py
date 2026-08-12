@@ -60,6 +60,16 @@ def _prepare(config: Config, logger: logging.Logger):
 
     legal_chunks = legal_retrieval.load_legal_chunks(Path(persona_dir) / "data", logger)
     taxonomy = taxonomy_mod.load_taxonomy(persona_dir, logger)
+
+    # cause_labels[].label_code에 공식 목록 enum을 주입해, Schema 유효성과 동일한 수준의
+    # 디코딩 제약(grammar-constrained decoding)을 받게 한다 — 이전엔 이 필드만 자유 문자열이라
+    # 새 label_code를 지어내는 것(hallucination)을 막을 수단이 없었다. persona_01/02처럼
+    # cause_labels가 없는 스키마는 그대로 반환되므로 다른 단계엔 영향 없다. 이 patched schema는
+    # identity_on/off 조건 루프 바깥(real_run의 schemas[stage] 조회)에서 그대로 공유되므로,
+    # 두 조건이 서로 다른 스키마를 보게 되는 일은 없다 — 통제 변인 성격이 유지된다.
+    if "persona_03" in schemas:
+        schemas["persona_03"] = taxonomy_mod.apply_label_code_enum(schemas["persona_03"], taxonomy)
+
     return persona_assets, schemas, stage_prompts, legal_chunks, taxonomy
 
 
@@ -125,6 +135,9 @@ _STAGE_SUMMARY_COLUMNS = [
     "n_alternative_causes",
     "n_legal_conflicts",
     "n_unresolved_issues",
+    # support_level이 HIGH/MEDIUM인데 fact_ids/evidence_ids가 둘 다 빈 항목 수(최종 산출물
+    # 기준 — 재시도·강제 하향 조정 이후). 0이면 이 결함이 남아있지 않다는 뜻.
+    "n_causes_unsupported",
     # persona_03 (최종 레이블)
     "accident_type",
     "root_cause_primary",
@@ -133,6 +146,11 @@ _STAGE_SUMMARY_COLUMNS = [
     "analytic_contribution",
     "official_ratio",
     "taxonomy_valid",
+    # 문서 단위 all-or-nothing인 taxonomy_valid만으로는 항목 하나만 틀려도 문서 전체가
+    # False가 되어 표본이 작을 때 결론을 쉽게 왜곡한다(07_유효성지표_생성량분석_정리.md 6-5절).
+    # 항목(label_code) 단위로도 집계할 수 있도록 분자/분모를 별도로 남긴다.
+    "n_taxonomy_ok_items",
+    "n_taxonomy_total_items",
 ]
 
 
@@ -147,12 +165,92 @@ def _extract_persona_01_summary(parsed: dict) -> dict:
     }
 
 
+def has_unsupported_high_confidence_cause(parsed: dict) -> bool:
+    """support_level이 HIGH/MEDIUM인데 fact_ids와 evidence_ids가 둘 다 빈 원인이 있는지 확인.
+
+    persona_02_output_schema.json은 causes[]의 fact_ids/evidence_ids를 required로
+    강제하지 않고(선택 필드), support_level과의 교차 제약도 없다 — "확신도는 높다면서
+    근거 인용은 0개"인 조합이 스키마상 완전히 유효하게 통과한다. 이건 P03의
+    label_code/confidence 정합성 문제(taxonomy.py::has_scored_blank_label)와 정확히
+    같은 클래스의 결함이며, cluster_0의 "환경적 요인 - 날씨 등"(support_level=HIGH,
+    evidence_ids=[])이 실제로 관측된 사례다(08_코드수정_실측검증.md 후속 조사).
+    """
+    for cause in parsed.get("causes") or []:
+        if not isinstance(cause, dict):
+            continue
+        if cause.get("support_level") in ("HIGH", "MEDIUM") and not cause.get("fact_ids") and not cause.get(
+            "evidence_ids"
+        ):
+            return True
+    return False
+
+
+def force_downgrade_unsupported_causes(parsed: dict) -> tuple[dict, int]:
+    """재시도로도 못 고친 미근거 고신뢰 원인을 코드로 결정적으로 마무리한다.
+
+    taxonomy.py::force_resolve_scored_blank_labels()와 동일한 설계 — 모델의 다음 생성
+    결과를 한 번 더 신뢰하는 대신, 재시도 예산을 다 쓰고도 결함이 남아 있으면 그 원인의
+    support_level만 코드에서 직접 `INSUFFICIENT`(스키마에 이미 있는 정직한 하락 값)로
+    덮어쓴다. fact_ids/evidence_ids가 이미 채워진 다른 원인은 건드리지 않는다.
+    """
+    downgraded = 0
+    for cause in parsed.get("causes") or []:
+        if not isinstance(cause, dict):
+            continue
+        if cause.get("support_level") in ("HIGH", "MEDIUM") and not cause.get("fact_ids") and not cause.get(
+            "evidence_ids"
+        ):
+            cause["support_level"] = "INSUFFICIENT"
+            downgraded += 1
+    return parsed, downgraded
+
+
+def merge_p02_retry_preserving_good_causes(original_parsed: dict, retry_parsed: dict) -> dict:
+    """taxonomy.py::merge_retry_preserving_good_items()와 동일한 이유·설계 — 전체 causes[]를
+    다시 생성하는 교정 재시도가 원래 정상이던 원인까지 훼손하는 사례가 실측됐으므로(cluster_0/on,
+    같은 날 저녁 조사), cause_id로 매칭해 원래 결함(미근거 고신뢰)이 없던 원인은 재시도 응답과
+    무관하게 원본을 그대로 보존한다.
+    """
+    original_causes = original_parsed.get("causes") or []
+    retry_by_id = {
+        c.get("cause_id"): c
+        for c in (retry_parsed.get("causes") or [])
+        if isinstance(c, dict) and c.get("cause_id") is not None
+    }
+    merged_causes = []
+    for orig in original_causes:
+        if not isinstance(orig, dict):
+            merged_causes.append(orig)
+            continue
+        was_defective = (
+            orig.get("support_level") in ("HIGH", "MEDIUM")
+            and not orig.get("fact_ids")
+            and not orig.get("evidence_ids")
+        )
+        if not was_defective:
+            merged_causes.append(orig)
+            continue
+        replacement = retry_by_id.get(orig.get("cause_id"))
+        merged_causes.append(replacement if replacement is not None else orig)
+    merged = dict(retry_parsed)
+    merged["causes"] = merged_causes
+    return merged
+
+
 def _extract_persona_02_summary(parsed: dict) -> dict:
     return {
         "n_cause_candidates": len(parsed.get("causes") or []),
         "n_alternative_causes": len(parsed.get("alternative_causes") or []),
         "n_legal_conflicts": len(parsed.get("legal_conflicts") or []),
         "n_unresolved_issues": len(parsed.get("unresolved_issues") or []),
+        "n_causes_unsupported": sum(
+            1
+            for c in (parsed.get("causes") or [])
+            if isinstance(c, dict)
+            and c.get("support_level") in ("HIGH", "MEDIUM")
+            and not c.get("fact_ids")
+            and not c.get("evidence_ids")
+        ),
         "handoff_status": parsed.get("handoff_status"),
     }
 
@@ -169,9 +267,14 @@ def _extract_persona_03_summary(parsed: dict, known_label_codes: set[str] | None
     incident_labels = parsed.get("incident_labels") or {}
     accident_type = incident_labels.get("accident_type") if isinstance(incident_labels, dict) else None
     all_codes = [c.get("label_code") for c in cause_labels]
-    taxonomy_valid = (
-        all(code in known_label_codes for code in all_codes) if (known_label_codes and all_codes) else None
+    # NFC 정규화 + strip 후 비교 — 공백/유니코드 정규형 차이로 인한 오탐을 막는 방어 코드
+    # (taxonomy.py::is_known_label_code, 07_유효성지표_생성량분석_정리.md 6-4절 참고).
+    code_is_ok = (
+        [taxonomy_mod.is_known_label_code(code, known_label_codes) for code in all_codes]
+        if known_label_codes
+        else []
     )
+    taxonomy_valid = all(code_is_ok) if (known_label_codes and all_codes) else None
     return {
         "accident_type": accident_type,
         "root_cause_primary": root_cause_primary,
@@ -183,6 +286,8 @@ def _extract_persona_03_summary(parsed: dict, known_label_codes: set[str] | None
         ),
         "official_ratio": json.dumps(parsed.get("official_ratio"), ensure_ascii=False) if parsed.get("official_ratio") is not None else None,
         "taxonomy_valid": taxonomy_valid,
+        "n_taxonomy_ok_items": sum(code_is_ok) if code_is_ok else None,
+        "n_taxonomy_total_items": len(all_codes) if known_label_codes else None,
     }
 
 
@@ -253,6 +358,8 @@ def real_run(
 
     save_failures = []
     repetition_retry_cases = []
+    taxonomy_defect_retry_cases = []
+    p02_evidence_retry_cases = []
     rows: list[dict] = []
     retry_on_parse_error = config.data["validation"].get("retry_on_parse_error", 0)
     repetition_retry_cfg = config.data["validation"].get("repetition_retry", {})
@@ -402,6 +509,166 @@ def real_run(
                         }
                     )
 
+                # cause_labels[].label_code에 enum을 걸어도(taxonomy.py::apply_label_code_enum)
+                # confidence와의 정합성까지는 디코딩 단계에서 강제되지 않는다 — "점수는 매겼는데
+                # 이름은 빈 문자열"(결측 결함, 07_유효성지표_생성량분석_정리.md 6-3절의 Type B)이
+                # 여전히 나올 수 있다. Schema 위반과 달리 이전엔 이 패턴이 재시도 없이 그대로
+                # 최종 산출물로 확정됐다.
+                #
+                # 2026-08-12 실측(08_코드수정_실측검증.md)에서 자연어 교정 재시도가 불안정함이
+                # 드러났다: 1차 시도("채우거나 비워라")는 전체 cause_labels를 원본 user_prompt부터
+                # 통째로 다시 생성하다 보니 정상이던 항목까지 NOT_SCORABLE로 밀어버렸고(cluster_0/3
+                # identity_on), 2차 시도(모델 직전 출력을 보여주고 "결함만 고치라" + temperature>0
+                # 재시도)조차 cluster_0/on을 오히려 "confidence는 그대로 둔 채 이름만 빈" 더 위험한
+                # 상태로 악화시켰다 — 재시도를 더 쓴다고 단조롭게 좋아지지 않는다는 뜻이다.
+                #
+                # 같은 날 저녁 추가 조사: cluster_0/identity_on에서 재시도가 원래 멀쩡했던 항목까지
+                # 훼손한 정확한 사례를 확인했다 — P02가 낸 "환경적 요인 - 날씨 등"은 공식 목록의
+                # "기상 등 불가항력"과 명확히 매칭되는데도, 다른 항목의 결함을 고치는 재시도 과정에서
+                # 이 멀쩡한 항목까지 빈 값으로 바뀌었다. "결함 항목만 고치고 나머지는 건드리지 말라"는
+                # 지시는 자연어일 뿐 강제가 아니었다는 뜻이다. 그래서 이제 재시도 응답을 그대로 쓰지
+                # 않고, taxonomy_mod.merge_retry_preserving_good_items()로 **원래 결함이 없던
+                # 항목은 cause_id 기준으로 무조건 원본을 그대로 복원**한다 — 결함이 있던 항목만
+                # 재시도 결과로 교체되고, 그래도 여전히 결함이면 아래
+                # taxonomy_mod.force_resolve_scored_blank_labels()로 결정적으로 마무리한다. 이
+                # 보정은 identity_on/off 양쪽에 동일하게 적용되는 구조적 코드라 어느 조건에 유리하게
+                # 작용하지 않는다.
+                taxonomy_defect_retry_attempted = 0
+                taxonomy_defect_retry_succeeded = 0
+                taxonomy_defect_force_resolved_items = 0
+                if (
+                    stage == "persona_03"
+                    and parse_result.schema_valid
+                    and parse_result.parsed
+                    and taxonomy_mod.has_scored_blank_label(parse_result.parsed)
+                ):
+                    taxonomy_defect_retry_attempted = 1
+                    pre_retry_parsed = parse_result.parsed
+                    logger.warning(
+                        "taxonomy 결측 결함 의심(doc_id=%s condition=%s) — 점수는 있는데 "
+                        "label_code가 빈 항목이 있어 1회 교정 재시도",
+                        unit.cluster_id, condition_name,
+                    )
+                    corrective_user_prompt = (
+                        pairs[unit_idx][1]
+                        + "\n\n[SYSTEM_NOTE] 방금 아래 JSON을 생성했다:\n"
+                        + json.dumps(pre_retry_parsed, ensure_ascii=False)
+                        + "\n\n이 중 confidence가 NOT_SCORABLE이 아닌데 label_code가 빈 문자열인 "
+                        "항목이 결함이다. 다음 규칙으로 그 결함 항목만 고치고, 이미 label_code가 "
+                        "채워져 있는 나머지 항목은 절대 바꾸지 말고 그대로 유지하라.\n"
+                        "1순위: [CANDIDATE_LABELS] 목록 중 조금이라도 관련 있는 항목이 하나라도 "
+                        "있다면 label_code를 그 항목으로 채우고 confidence를 LOW로 낮춰라. "
+                        "완벽히 일치하지 않아도 된다 — 비워두는 것보다 가장 가까운 항목을 고르고 "
+                        "confidence로 불확실성을 표현하는 쪽을 우선한다.\n"
+                        "2순위: 정말로 이 사고와 무관하다고 판단될 때만 label_code를 빈 문자열로, "
+                        "confidence를 NOT_SCORABLE로, official_ratio와 analytic_contribution_score를 "
+                        "null로 맞춰라.\n"
+                        "전체 JSON을 다시 출력하라."
+                    )
+                    defect_retry_gen = backend.generate_batch(
+                        [(system_prompt, corrective_user_prompt)], schema=schema
+                    )[0]
+                    defect_retry_parse = schema_validate.parse_and_validate(defect_retry_gen.clean_text, schema)
+                    if defect_retry_parse.schema_valid and defect_retry_parse.parsed:
+                        gen = defect_retry_gen
+                        merged_parsed = taxonomy_mod.merge_retry_preserving_good_items(
+                            pre_retry_parsed, defect_retry_parse.parsed
+                        )
+                        parse_result = defect_retry_parse
+                        parse_result.parsed = merged_parsed
+                        if not taxonomy_mod.has_scored_blank_label(merged_parsed):
+                            taxonomy_defect_retry_succeeded = 1
+
+                    if parse_result.parsed and taxonomy_mod.has_scored_blank_label(parse_result.parsed):
+                        fixed_parsed, taxonomy_defect_force_resolved_items = taxonomy_mod.force_resolve_scored_blank_labels(
+                            parse_result.parsed
+                        )
+                        parse_result.parsed = fixed_parsed
+                        logger.warning(
+                            "taxonomy 결측 결함 재시도 실패(doc_id=%s condition=%s) — 항목 %d개를 "
+                            "confidence=NOT_SCORABLE로 코드에서 강제 확정",
+                            unit.cluster_id, condition_name, taxonomy_defect_force_resolved_items,
+                        )
+
+                    taxonomy_defect_retry_cases.append(
+                        {
+                            "doc_id": unit.cluster_id,
+                            "condition": condition_name,
+                            "succeeded": taxonomy_defect_retry_succeeded,
+                            "force_resolved_items": taxonomy_defect_force_resolved_items,
+                        }
+                    )
+
+                # persona_02_output_schema.json은 causes[]의 fact_ids/evidence_ids를 required로
+                # 강제하지 않고, support_level과의 교차 제약(if/then)도 xgrammar가 무시함이 실측
+                # 확인됐다(위 persona_03 블록·08_코드수정_실측검증.md 참고) — 그래서 "support_level=
+                # HIGH인데 근거 인용은 0개"인 원인이 스키마를 그대로 통과한다(cluster_0의 "환경적
+                # 요인 - 날씨 등" 사례). persona_03과 완전히 같은 3단계(프롬프트 지시 추가 →
+                # 1회 교정 재시도 + 원래 정상이던 원인 보존 → 그래도 안 되면 코드가 결정적으로
+                # support_level을 INSUFFICIENT로 하향)로 대응한다.
+                p02_evidence_retry_attempted = 0
+                p02_evidence_retry_succeeded = 0
+                p02_evidence_force_downgraded = 0
+                if (
+                    stage == "persona_02"
+                    and parse_result.schema_valid
+                    and parse_result.parsed
+                    and has_unsupported_high_confidence_cause(parse_result.parsed)
+                ):
+                    p02_evidence_retry_attempted = 1
+                    pre_retry_parsed = parse_result.parsed
+                    logger.warning(
+                        "P02 미근거 고신뢰 원인 의심(doc_id=%s condition=%s) — support_level은 "
+                        "HIGH/MEDIUM인데 fact_ids/evidence_ids가 둘 다 빈 원인이 있어 1회 교정 재시도",
+                        unit.cluster_id, condition_name,
+                    )
+                    corrective_user_prompt = (
+                        pairs[unit_idx][1]
+                        + "\n\n[SYSTEM_NOTE] 방금 아래 JSON을 생성했다:\n"
+                        + json.dumps(pre_retry_parsed, ensure_ascii=False)
+                        + "\n\n이 중 support_level이 HIGH나 MEDIUM인데 fact_ids와 evidence_ids가 "
+                        "둘 다 비어 있는 원인이 결함이다. 다음 규칙으로 그 결함 원인만 고치고, 이미 "
+                        "fact_ids/evidence_ids가 채워져 있거나 support_level이 낮은 나머지 원인은 "
+                        "절대 바꾸지 말고 그대로 유지하라.\n"
+                        "1순위: 페르소나 1(KMST-P01) 결과의 facts[]/evidence[] 중 실제로 이 원인을 "
+                        "뒷받침하는 항목이 있다면 그 fact_id/evidence_id를 채워라.\n"
+                        "2순위: 정말로 연결할 근거가 없다면 support_level을 INSUFFICIENT로 낮춰라.\n"
+                        "전체 JSON을 다시 출력하라."
+                    )
+                    defect_retry_gen = backend.generate_batch(
+                        [(system_prompt, corrective_user_prompt)], schema=schema
+                    )[0]
+                    defect_retry_parse = schema_validate.parse_and_validate(defect_retry_gen.clean_text, schema)
+                    if defect_retry_parse.schema_valid and defect_retry_parse.parsed:
+                        gen = defect_retry_gen
+                        merged_parsed = merge_p02_retry_preserving_good_causes(
+                            pre_retry_parsed, defect_retry_parse.parsed
+                        )
+                        parse_result = defect_retry_parse
+                        parse_result.parsed = merged_parsed
+                        if not has_unsupported_high_confidence_cause(merged_parsed):
+                            p02_evidence_retry_succeeded = 1
+
+                    if parse_result.parsed and has_unsupported_high_confidence_cause(parse_result.parsed):
+                        fixed_parsed, p02_evidence_force_downgraded = force_downgrade_unsupported_causes(
+                            parse_result.parsed
+                        )
+                        parse_result.parsed = fixed_parsed
+                        logger.warning(
+                            "P02 미근거 고신뢰 원인 재시도 실패(doc_id=%s condition=%s) — 원인 %d개를 "
+                            "support_level=INSUFFICIENT로 코드에서 강제 확정",
+                            unit.cluster_id, condition_name, p02_evidence_force_downgraded,
+                        )
+
+                    p02_evidence_retry_cases.append(
+                        {
+                            "doc_id": unit.cluster_id,
+                            "condition": condition_name,
+                            "succeeded": p02_evidence_retry_succeeded,
+                            "force_downgraded": p02_evidence_force_downgraded,
+                        }
+                    )
+
                 if not parse_result.schema_valid:
                     save_failures.append({"doc_id": unit.cluster_id, "stage": stage, "condition": condition_name})
 
@@ -439,6 +706,12 @@ def real_run(
                     "repetition_retry_overrides": json.dumps(repetition_retry_last_overrides, ensure_ascii=False)
                     if repetition_retry_attempted
                     else None,
+                    "taxonomy_defect_retry_attempted": taxonomy_defect_retry_attempted,
+                    "taxonomy_defect_retry_succeeded": taxonomy_defect_retry_succeeded,
+                    "taxonomy_defect_force_resolved_items": taxonomy_defect_force_resolved_items,
+                    "p02_evidence_retry_attempted": p02_evidence_retry_attempted,
+                    "p02_evidence_retry_succeeded": p02_evidence_retry_succeeded,
+                    "p02_evidence_force_downgraded": p02_evidence_force_downgraded,
                     "think_block_stripped": gen.think_block_stripped,
                     "prompt_tokens": gen.prompt_tokens,
                     "completion_tokens": gen.completion_tokens,
@@ -532,6 +805,8 @@ def real_run(
         "failure_count": len(save_failures),
         "failures": save_failures,
         "repetition_retry_cases": repetition_retry_cases,
+        "taxonomy_defect_retry_cases": taxonomy_defect_retry_cases,
+        "p02_evidence_retry_cases": p02_evidence_retry_cases,
         "identity_prompt_token_diff": token_diff_report,
         "limit": limit,
     }
