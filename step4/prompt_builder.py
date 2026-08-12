@@ -106,11 +106,7 @@ def build_system_prompt(
 _CLUSTER_MODE_NOTE = {
     "persona_01": (
         "이 군집에서 반복적으로 관찰되는 상황 요소와 증거 패턴만 facts/evidence로 채택하십시오. "
-        "대표 문장 하나에만 등장하는 특이 사항을 이 군집 전체의 사실인 것처럼 일반화하지 마십시오. "
-        "[CLUSTER_SAMPLE_SENTENCES]의 각 문장 앞에는 [S01], [S02]... 번호가 붙어 있습니다. "
-        "facts[]/evidence[]의 source_location에는 그 근거가 된 문장 번호(예: \"S03\")를 실제로 "
-        "기록하십시오 — \"[CLUSTER_SAMPLE_SENTENCES]\"라는 섹션 태그 자체를 그대로 베껴 쓰지 "
-        "마십시오."
+        "대표 문장 하나에만 등장하는 특이 사항을 이 군집 전체의 사실인 것처럼 일반화하지 마십시오."
     ),
     "persona_02": (
         "페르소나 1이 정리한 이 군집의 패턴을 바탕으로, 이 군집을 대표할 만한 원인 후보들의 "
@@ -169,16 +165,14 @@ def build_cluster_user_prompt(
     candidate_labels_block: str | None = None,
 ) -> str:
     prev_json = json.dumps(previous_output, ensure_ascii=False) if previous_output is not None else "null"
-    # 각 대표 문장에 S01, S02...로 번호를 매긴다 — 이 번호가 없으면 facts[]/evidence[]의
-    # source_location에 실제 위치 대신 "[CLUSTER_SAMPLE_SENTENCES]" 섹션 태그 자체를 그대로
-    # 베껴 쓰는 사례가 있었다(persona_model/SCHEMA_GUIDE.md 3절 참고). 번호를 주면 그 자리에
-    # "S03"처럼 실제로 인용 가능한 값을 쓸 수 있어, P01의 근거 인용 품질과 P02가 이어받는
-    # fact_ids/evidence_ids 연결 품질에 함께 도움이 된다.
-    samples_block = (
-        "\n".join(f"- [S{i:02d}] {s}" for i, s in enumerate(sample_sentences, start=1))
-        if sample_sentences
-        else "(대표 문장 없음)"
-    )
+    # 2026-08-13: 대표 문장에 [S01], [S02]... 번호를 매기고 P01에 "source_location에 실제로
+    # 기록하라"고 지시했던 시도를 되돌렸다 — A/B 테스트로 직접 확인한 결과(diag_ab_test.py),
+    # 이 조합이 cluster_0/persona_01/identity_on의 반복출력 폭주(512토큰 정상 완료 -> 4096토큰
+    # 공백 반복)를 유발하는 것으로 확정됐다. repetition/frequency penalty가 걸린 상태에서
+    # "순차적으로 번호 매겨진 항목을 인용하라"는 과제 자체가, 이 코드베이스에 이미 알려진
+    # 취약점(EVIDENCE_604... 식 순차 ID 이탈, config.json의 frequency_penalty 관련 note 참고)을
+    # 다시 건드리는 것으로 보인다. 번호 매기기 없이 원래 형식("- 문장")으로 복귀.
+    samples_block = "\n".join(f"- {s}" for s in sample_sentences) if sample_sentences else "(대표 문장 없음)"
 
     parts = [
         "[CLUSTER_METADATA]",
