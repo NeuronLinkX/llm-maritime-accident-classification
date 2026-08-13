@@ -1,0 +1,68 @@
+{
+  "experiment": {
+    "name": "step4_persona_ablation_cluster_20260813_speed",
+    "decoding_mode": "greedy",
+    "note": "품질을 최대한 유지하면서 처리량을 높이기 위한 speed 모드. 출력 의미 제약은 유지하고, vLLM prefix caching 및 배치 실행을 켠다.",
+    "personas": ["persona_01", "persona_02", "persona_03"],
+    "chain_order": ["persona_01", "persona_02", "persona_03"],
+    "conditions": [
+      { "name": "identity_on", "use_persona_identity": true },
+      { "name": "identity_off", "use_persona_identity": false }
+    ]
+  },
+  "model": {
+    "id": "Qwen2.5-14B-Instruct",
+    "family": "qwen2.5",
+    "path": "/home/jiwoo/.cache/huggingface/hub/models--Qwen--Qwen2.5-14B-Instruct/snapshots/cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+    "backend": "vllm",
+    "dtype": "bfloat16",
+    "max_model_len": 32768,
+    "gpu_memory_utilization": 0.85,
+    "tensor_parallel_size": 1,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 16384,
+    "enable_prefix_caching": true,
+    "local_files_only": true,
+    "enable_thinking": false
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": -1,
+    "max_new_tokens": 4096,
+    "repetition_penalty": 1.15,
+    "frequency_penalty": 0.4,
+    "batch_mode": true
+  },
+  "determinism_check": {
+    "sample_size": 20
+  },
+  "paths": {
+    "persona_dir": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/persona_model",
+    "gold_set": null,
+    "output_root": "./outputs/step4_persona_ablation_20260813_speed"
+  },
+  "cluster": {
+    "paths": {
+      "clusters_csv": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_3_process/output/clusters.csv",
+      "cluster_keywords_csv": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_3_process/output/cluster_keywords.csv",
+      "step1_jsonl": "/home/jiwoo/Desktop/workspace/SBERT/llm_based_root_cause_classification_system/step_2_process/from_step1/step1_dataset.jsonl"
+    },
+    "samples_per_cluster": { "0": 8, "1": 10, "2": 5, "3": 15, "4": 3 },
+    "samples_per_cluster_default": 5,
+    "sample_text_maxlen": 300
+  },
+  "validation": {
+    "retry_on_parse_error": 0,
+    "repetition_retry": {
+      "enabled": true,
+      "completion_token_ratio_threshold": 0.95,
+      "attempts": [
+        { "frequency_penalty": 0.6, "repetition_penalty": 1.3 },
+        { "frequency_penalty": 0.7, "repetition_penalty": 1.5, "temperature": 0.3, "top_p": 0.9, "seed": 101 },
+        { "frequency_penalty": 0.8, "repetition_penalty": 1.6, "temperature": 0.5, "top_p": 0.9, "seed": 202 },
+        { "frequency_penalty": 0.9, "repetition_penalty": 1.8, "temperature": 0.8, "top_p": 0.9, "seed": 303 }
+      ]
+    }
+  }
+}

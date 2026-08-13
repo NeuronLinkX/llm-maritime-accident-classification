@@ -1,6 +1,9 @@
+.venv/
+
 # === 비밀값 — 절대 커밋 금지 ===
 # OpenAI API 키, Hugging Face 토큰이 평문으로 들어있음. 템플릿은 config/config.php.example 참고.
 config/config.php
+config/slack.env
 
 # === STEP 1: 원본/추출 데이터 (개인정보·저작권 소지가 있는 재결서 원문) ===
 step_1_process/3rdparty/
@@ -32,6 +35,8 @@ step_4_process/output/
 step_4_process/models/
 step_4_process/.venv/
 step_4_process/.step4_run.lock
+
+step4/.venv
 
 step4/*.md
 step4/*.log

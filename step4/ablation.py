@@ -26,11 +26,24 @@ class AblationIntegrityError(RuntimeError):
     pass
 
 
+def neutralize_identity_text(identity_text: str) -> str:
+    """삭제형 identity_off에서는 정체성 문장을 별도 치환 없이 제거한다."""
+    return ""
+
+
 def render_variant(text: str, use_identity: bool) -> str:
-    """identity_on -> 마커만 제거하고 내용은 유지. identity_off -> 마커+내용 통째로 제거."""
+    """identity_on -> 마커만 제거하고 내용은 유지.
+
+    identity_off -> 마커와 정체성 선언을 제거한다.
+    """
     if use_identity:
         return text.replace(START + "\n", "").replace(START, "").replace(END + "\n", "").replace(END, "")
-    return _BLOCK_RE.sub("", text)
+
+    def _replace(match: re.Match[str]) -> str:
+        neutral = neutralize_identity_text(match.group(1).strip())
+        return (neutral + "\n") if neutral else ""
+
+    return _BLOCK_RE.sub(_replace, text)
 
 
 def build_and_verify_diff(
@@ -55,16 +68,17 @@ def build_and_verify_diff(
             f"{persona_id}: identity_on/off 결과가 동일합니다 — 마커 안쪽에 실제 정체성 문구가 없는지 확인하세요."
         )
 
-    # 재검증: on_text에서 identity 블록에 해당하는 문구를 다시 제거하면 off_text와 완전히 같아야 한다.
+    # 재검증: on_text에서 정체성 문장만 제거한 결과가 off_text와 완전히 같아야 한다.
     # (마커 밖 어딘가가 실수로 달라졌다면 여기서 불일치가 난다.)
     on_block_match = _BLOCK_RE.search(raw_text)
     identity_sentence = on_block_match.group(1).strip() if on_block_match else ""
-    reconstructed_off = on_text.replace(identity_sentence, "", 1)
+    neutral_identity_sentence = neutralize_identity_text(identity_sentence)
+    reconstructed_off = on_text.replace(identity_sentence, neutral_identity_sentence, 1)
     reconstructed_off = re.sub(r"\n{3,}", "\n\n", reconstructed_off)
     normalized_off = re.sub(r"\n{3,}", "\n\n", off_text)
     if reconstructed_off.strip() != normalized_off.strip():
         raise AblationIntegrityError(
-            f"{persona_id}: identity_on에서 정체성 문장만 제거한 결과가 identity_off와 다릅니다 — "
+            f"{persona_id}: identity_on에서 정체성 문장을 제거한 결과가 identity_off와 다릅니다 — "
             "정체성 블록 외의 내용이 identity_off 생성 과정에서 변경된 것으로 보입니다."
         )
 
@@ -90,7 +104,9 @@ def build_and_verify_diff(
         if (ln.startswith("-") or ln.startswith("+")) and not ln.startswith(("---", "+++"))
     ]
     identity_lines = {ln.strip() for ln in identity_sentence.splitlines() if ln.strip()}
+    neutral_identity_lines = {ln.strip() for ln in neutral_identity_sentence.splitlines() if ln.strip()}
     stray = [ln for ln in changed_content_lines if ln and ln not in identity_lines]
+    stray = [ln for ln in stray if ln not in neutral_identity_lines]
     if stray:
         raise AblationIntegrityError(
             f"{persona_id}: diff에 정체성 블록 외의 변경이 감지되었습니다: {stray}"

@@ -39,6 +39,7 @@ class VLLMBackend:
         self.logger = logger
         self._llm = None
         self._tokenizer = None
+        self.batch_mode = bool(self.generation_cfg.get("batch_mode", False))
 
     def load(self) -> None:
         if self.model_cfg.get("local_files_only"):
@@ -58,10 +59,13 @@ class VLLMBackend:
             dtype=self.model_cfg.get("dtype", "bfloat16"),
             max_model_len=self.model_cfg.get("max_model_len", 32768),
             gpu_memory_utilization=self.model_cfg.get("gpu_memory_utilization", 0.85),
+            tensor_parallel_size=self.model_cfg.get("tensor_parallel_size", 1),
+            max_num_seqs=self.model_cfg.get("max_num_seqs"),
+            max_num_batched_tokens=self.model_cfg.get("max_num_batched_tokens"),
             # 결정성 확인에서 byte_identical_rate=0.0이 나온 원인 중 하나 — prefix caching은
             # 호출 순서/타이밍에 따라 캐시 적중 여부가 달라져 동일 입력에도 부동소수점 연산
             # 순서가 바뀔 수 있다. 군집 5개뿐이라 캐싱 이득보다 재현성이 더 중요해 끈다.
-            enable_prefix_caching=False,
+            enable_prefix_caching=self.model_cfg.get("enable_prefix_caching", False),
         )
         self.logger.info("모델 로드 완료")
 
@@ -119,13 +123,12 @@ class VLLMBackend:
         pairs: list[tuple[str, str]],
         sampling_overrides: dict | None = None,
         schema: dict | None = None,
+        batch_mode: bool | None = None,
     ) -> list[GenerationResult]:
         """pairs: [(system_prompt, user_prompt), ...].
 
-        군집 단위(최대 5개)라 vLLM 연속배치의 처리량 이득보다 재현성이 더 중요하다 —
-        결정성 확인에서 byte_identical_rate=0.0이 나온 원인이 배치 구성에 따라 달라지는
-        부동소수점 연산 순서였다. 한 번에 하나씩만 llm.generate()에 넣어 배치 구성
-        자체가 항상 동일(크기 1)하도록 만든다.
+        기본값은 config.generation.batch_mode를 따른다. False면 결정성을 우선해 순차 실행,
+        True면 처리량을 우선해 한 번에 배치 실행한다.
 
         sampling_overrides: 이 호출에 한해서만 generation_cfg 일부를 덮어쓴다(예: 특정
         군집의 반복루프 재시도에서만 frequency_penalty를 국소적으로 올릴 때). config의
@@ -137,13 +140,34 @@ class VLLMBackend:
             raise RuntimeError("backend.load()를 먼저 호출해야 합니다.")
 
         sampling_params = self._build_sampling_params(sampling_overrides, schema=schema)
+        use_batch_mode = self.batch_mode if batch_mode is None else batch_mode
+        prompts = [self._render_prompt(sp, up) for sp, up in pairs]
         results: list[GenerationResult] = []
-        for sp, up in pairs:
-            prompt = self._render_prompt(sp, up)
+        if use_batch_mode:
+            start = time.time()
+            outputs = self._llm.generate(prompts, sampling_params)
+            elapsed = time.time() - start
+            for out in outputs:
+                raw_text = out.outputs[0].text
+                clean_text, stripped = strip_think_block(raw_text)
+                prompt_tokens = len(out.prompt_token_ids) if out.prompt_token_ids else 0
+                completion_tokens = len(out.outputs[0].token_ids) if out.outputs[0].token_ids else 0
+                results.append(
+                    GenerationResult(
+                        raw_text=raw_text,
+                        clean_text=clean_text,
+                        think_block_stripped=stripped,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        latency_sec=elapsed,
+                    )
+                )
+            return results
+
+        for prompt in prompts:
             start = time.time()
             outputs = self._llm.generate([prompt], sampling_params)
             elapsed = time.time() - start
-
             out = outputs[0]
             raw_text = out.outputs[0].text
             clean_text, stripped = strip_think_block(raw_text)

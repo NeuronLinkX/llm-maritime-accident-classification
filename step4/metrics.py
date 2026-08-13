@@ -31,6 +31,7 @@ def schema_validity_metrics(df: pd.DataFrame) -> dict:
     for (stage, condition), group in df.groupby(["stage", "condition"]):
         n = len(group)
         schema_valid_rate = float(group["schema_valid"].mean()) if n else float("nan")
+        semantic_valid_rate = float(group["semantic_valid"].mean()) if ("semantic_valid" in group and n) else float("nan")
         parse_failure_rate = float((~group["schema_valid"] & group["parsed"].isna()).mean()) if n else float("nan")
         think_leak_rate = float(group["think_block_stripped"].mean()) if n else float("nan")
         refusal_rate = float(
@@ -42,6 +43,7 @@ def schema_validity_metrics(df: pd.DataFrame) -> dict:
         out[f"{stage}__{condition}"] = {
             "n": n,
             "schema_validity_rate": schema_valid_rate,
+            "semantic_validity_rate": semantic_valid_rate,
             "parse_failure_rate": parse_failure_rate,
             "think_leak_rate": think_leak_rate,
             "refusal_rate": refusal_rate,

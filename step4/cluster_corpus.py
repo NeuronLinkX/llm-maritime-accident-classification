@@ -18,6 +18,7 @@ from pathlib import Path
 class ClusterUnit:
     cluster_id: str  # "cluster_0" 형태 (doc_id 슬롯 재사용)
     n_docs: int
+    sample_doc_ids: list[str] = field(default_factory=list)
     freq_keywords: list[str] = field(default_factory=list)
     distinctive_keywords: list[str] = field(default_factory=list)
     sample_sentences: list[str] = field(default_factory=list)
@@ -102,6 +103,7 @@ def load_clusters(
             ClusterUnit(
                 cluster_id=f"cluster_{c}",
                 n_docs=len(by_cluster[c]),
+                sample_doc_ids=picks.get(c, []).copy(),
                 freq_keywords=kw["frequency"],
                 distinctive_keywords=kw["distinctive"],
                 sample_sentences=samples,

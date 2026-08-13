@@ -30,7 +30,7 @@ def _fig_label_distribution(labels_df: pd.DataFrame, out_path: Path) -> bool:
     pivot.plot(kind="bar", stacked=True, ax=ax)
     ax.set_title("조건별 root_cause_primary 분포 (persona_03)")
     ax.set_xlabel("condition")
-    ax.set_ylabel("문서 수")
+    ax.set_ylabel("군집 수")
     ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
@@ -141,7 +141,7 @@ def generate_report(
     all_metrics: dict,
     doc_count: int,
     manifest: dict,
-    unit_label: str = "문서",
+    unit_label: str = "군집",
 ) -> Path:
     report_dir = output_root / "report"
     figures_dir = report_dir / "figures"
@@ -196,7 +196,7 @@ def generate_report(
     lines.append(f"- label_identical_rate: {_fmt(determinism_result.get('label_identical_rate'))}")
     if byte_rate is not None and byte_rate < 1.0:
         lines.append(
-            f"- **100% 미달** — mismatch 문서: {determinism_result.get('mismatch_cases')}. "
+            f"- **100% 미달** — mismatch 군집: {determinism_result.get('mismatch_cases')}. "
             "greedy decoding임에도 불일치가 발생했다면 vLLM 배치 스케줄링 비결정성 또는 "
             "DGX Spark(ECC 미탑재) 하드웨어 요인일 수 있다."
         )
@@ -205,13 +205,13 @@ def generate_report(
     lines.append("")
 
     lines.append("## 3. 조건별 유효성 지표\n")
-    lines.append("| stage | condition | n | schema_validity_rate | parse_failure_rate | think_leak_rate | refusal_rate | mean_completion_tokens |")
-    lines.append("|---|---|---|---|---|---|---|---|")
+    lines.append("| stage | condition | n | schema_validity_rate | semantic_validity_rate | parse_failure_rate | think_leak_rate | refusal_rate | mean_completion_tokens |")
+    lines.append("|---|---|---|---|---|---|---|---|---|")
     for key, m in all_metrics["schema_validity"].items():
         stage, condition = key.split("__")
         lines.append(
             f"| {stage} | {condition} | {m['n']} | {_fmt(m['schema_validity_rate'])} | "
-            f"{_fmt(m['parse_failure_rate'])} | {_fmt(m['think_leak_rate'])} | {_fmt(m['refusal_rate'])} | "
+            f"{_fmt(m.get('semantic_validity_rate'))} | {_fmt(m['parse_failure_rate'])} | {_fmt(m['think_leak_rate'])} | {_fmt(m['refusal_rate'])} | "
             f"{_fmt(m['mean_completion_tokens'], 1)} |"
         )
     lines.append("")
@@ -278,23 +278,27 @@ def generate_report(
     for stage in sorted(labels_df["stage"].unique()):
         sdf = labels_df[labels_df["stage"] == stage]
         extra = ""
+        tv = []
         if stage == "persona_03" and "taxonomy_valid" in sdf.columns:
             tv = sdf["taxonomy_valid"].dropna()
-            if len(tv):
-                extra = f", cause_label_taxonomy 준수율(문서 단위, all-or-nothing)={_fmt(tv.mean())}"
-        lines.append(f"- **{stage}**: schema_valid 평균={_fmt(sdf['schema_valid'].mean())}, "
+        if len(tv):
+            extra = f", cause_label_taxonomy 준수율(군집 단위, all-or-nothing)={_fmt(tv.mean())}"
+        semantic_extra = ""
+        if "semantic_valid" in sdf.columns:
+            semantic_extra = f", semantic_valid 평균={_fmt(sdf['semantic_valid'].mean())}"
+        lines.append(f"- **{stage}**: schema_valid 평균={_fmt(sdf['schema_valid'].mean())}{semantic_extra}, "
                       f"평균 completion_tokens={_fmt(sdf['completion_tokens'].mean(), 1)}{extra}")
     lines.append("")
 
-    # 문서 단위(all-or-nothing) 준수율 하나만 보면 label_code 3개 중 1개만 틀려도 문서 전체가
+    # 군집 단위(all-or-nothing) 준수율 하나만 보면 label_code 3개 중 1개만 틀려도 군집 전체가
     # False로 잡혀, 작은 표본에서 조건 간 차이가 실제보다 과장되어 보일 수 있다
     # (test_20260811/07_유효성지표_생성량분석_정리.md 6-5/6-6절). 항목(label_code) 단위 준수율과
     # 조건별(identity_on/off) 분리를 추가로 보여줘, 리포트만 봐도 두 지표가 다른 결론을 줄 수
     # 있다는 사실이 드러나게 한다.
     p03 = labels_df[labels_df["stage"] == "persona_03"]
     if not p03.empty and {"n_taxonomy_ok_items", "n_taxonomy_total_items"}.issubset(p03.columns):
-        lines.append("### 6-1. KMST 분류체계 준수율 — 문서 단위 vs 항목 단위, 조건별 분리\n")
-        lines.append("| condition | 문서 수 | 문서 단위 준수율(all-or-nothing) | 항목 단위 준수율(label_code 개별) |")
+        lines.append("### 6-1. KMST 분류체계 준수율 — 군집 단위 vs 항목 단위, 조건별 분리\n")
+        lines.append("| condition | 군집 수 | 군집 단위 준수율(all-or-nothing) | 항목 단위 준수율(label_code 개별) |")
         lines.append("|---|---|---|---|")
         for condition, cdf in p03.groupby("condition"):
             tv = cdf["taxonomy_valid"].dropna()
@@ -311,7 +315,7 @@ def generate_report(
             f"**{_fmt(ok_all / total_all) if total_all else 'N/A'}** |"
         )
         lines.append(
-            "\n주의: 두 지표는 서로 다른 질문에 답한다 — 문서 단위는 \"이 문서가 완벽했는가\", "
+            "\n주의: 두 지표는 서로 다른 질문에 답한다 — 군집 단위는 \"이 군집이 완벽했는가\", "
             "항목 단위는 \"이름표 하나하나가 맞았는가\"다. 표본이 작을수록(군집 수가 적을수록) "
             "두 지표가 크게 갈라질 수 있으므로 둘 중 하나만 인용하지 말 것.\n"
         )
@@ -463,7 +467,7 @@ def generate_report(
     lines.append("## 9. 재현 정보\n")
     lines.append(f"- config sha256: `{config.sha256}`")
     lines.append(f"- 시작: {manifest.get('started_at')}, 종료: {manifest.get('finished_at')}")
-    lines.append(f"- 처리 문서 수: {manifest.get('doc_count')}, 실패 건수: {manifest.get('failure_count')}")
+    lines.append(f"- 처리 군집 수: {manifest.get('doc_count')}, 실패 건수: {manifest.get('failure_count')}")
     lines.append("")
 
     report_path = report_dir / "benchmark_report.md"

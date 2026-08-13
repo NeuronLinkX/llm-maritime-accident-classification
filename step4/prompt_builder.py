@@ -154,13 +154,23 @@ def build_cluster_user_prompt(
     n_docs: int,
     freq_keywords: list[str],
     distinctive_keywords: list[str],
+    sample_doc_ids: list[str] | None,
     sample_sentences: list[str],
     previous_output: dict | None,
     legal_context: str,
     candidate_labels_block: str | None = None,
 ) -> str:
     prev_json = json.dumps(previous_output, ensure_ascii=False) if previous_output is not None else "null"
-    samples_block = "\n".join(f"- {s}" for s in sample_sentences) if sample_sentences else "(대표 문장 없음)"
+    sample_pairs = list(zip(sample_doc_ids or [], sample_sentences))
+    if sample_pairs:
+        samples_block = "\n".join(
+            f"- S{i:02d} | doc_id={doc_id} | {sentence}"
+            for i, (doc_id, sentence) in enumerate(sample_pairs, start=1)
+        )
+    elif sample_sentences:
+        samples_block = "\n".join(f"- S{i:02d} | {s}" for i, s in enumerate(sample_sentences, start=1))
+    else:
+        samples_block = "(대표 문장 없음)"
 
     parts = [
         "[CLUSTER_METADATA]",

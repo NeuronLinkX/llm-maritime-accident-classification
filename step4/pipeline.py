@@ -23,6 +23,8 @@ from step4 import metrics as metrics_mod
 from step4 import prompt_builder
 from step4 import report as report_mod
 from step4 import schema_validate
+from step4 import semantic_validate
+from step4 import slack_notify
 from step4 import taxonomy as taxonomy_mod
 from step4.config import Config
 
@@ -133,7 +135,29 @@ _STAGE_SUMMARY_COLUMNS = [
     "analytic_contribution",
     "official_ratio",
     "taxonomy_valid",
+    "semantic_valid",
+    "semantic_error_count",
+    "semantic_error_codes",
+    "n_taxonomy_ok_items",
+    "n_taxonomy_total_items",
+    "n_empty_label_code_items",
+    "n_unknown_label_code_items",
 ]
+
+
+def _build_runtime_schema(stage: str, base_schema: dict, known_label_codes: set[str]) -> dict:
+    schema = json.loads(json.dumps(base_schema))
+    if stage != "persona_03":
+        return schema
+
+    cause_labels = schema.get("properties", {}).get("cause_labels", {})
+    items = cause_labels.get("items", {})
+    properties = items.get("properties", {})
+    label_code_schema = properties.get("label_code")
+    if isinstance(label_code_schema, dict):
+        label_code_schema["enum"] = sorted(known_label_codes)
+        label_code_schema["minLength"] = 1
+    return schema
 
 
 def _extract_persona_01_summary(parsed: dict) -> dict:
@@ -236,6 +260,13 @@ def real_run(
 
     backend = backend_mod.VLLMBackend(config.data["model"], config.data["generation"], logger)
     backend.load()
+    notifier = slack_notify.SlackNotifier.from_env(logger)
+    batch_mode = bool(config.data["generation"].get("batch_mode", False))
+    if batch_mode:
+        logger.warning(
+            "generation.batch_mode=True — 처리량을 위해 vLLM 배치 실행을 사용합니다. "
+            "출력 품질은 유지되지만 byte-level 결정성은 약해질 수 있습니다."
+        )
 
     # identity_on/off 프롬프트 토큰 수 차이 기록 (지시서 2-3)
     token_diff_report = {}
@@ -279,7 +310,7 @@ def real_run(
 
         for stage in config.chain_order:
             stage_prompt = stage_prompts[stage]
-            schema = schemas[stage]
+            schema = _build_runtime_schema(stage, schemas[stage], known_label_codes)
 
             pending_units = []
             for unit in units:
@@ -308,6 +339,7 @@ def real_run(
                     n_docs=unit.n_docs,
                     freq_keywords=unit.freq_keywords,
                     distinctive_keywords=unit.distinctive_keywords,
+                    sample_doc_ids=unit.sample_doc_ids,
                     sample_sentences=unit.sample_sentences,
                     previous_output=previous_outputs.get(unit.cluster_id),
                     legal_context=legal_context,
@@ -329,14 +361,16 @@ def real_run(
             logger.info(
                 "생성 시작: condition=%s stage=%s %s수=%d", condition_name, stage, UNIT_LABEL, len(pending_units)
             )
-            gen_results = backend.generate_batch(pairs, schema=schema)
+            gen_results = backend.generate_batch(pairs, schema=schema, batch_mode=batch_mode)
 
             for unit_idx, (unit, gen) in enumerate(zip(pending_units, gen_results)):
                 parse_result = schema_validate.parse_and_validate(gen.clean_text, schema)
 
                 if not parse_result.schema_valid and retry_on_parse_error:
                     corrective_user_prompt = pairs[unit_idx][1] + "\n\n[SYSTEM_NOTE] 출력은 JSON 객체만 허용된다. 다시 JSON만 출력하라."
-                    retry_gen = backend.generate_batch([(system_prompt, corrective_user_prompt)], schema=schema)[0]
+                    retry_gen = backend.generate_batch(
+                        [(system_prompt, corrective_user_prompt)], schema=schema, batch_mode=False
+                    )[0]
                     retry_parse = schema_validate.parse_and_validate(retry_gen.clean_text, schema)
                     gen = retry_gen
                     parse_result = retry_parse
@@ -380,10 +414,19 @@ def real_run(
                             unit.cluster_id, stage, condition_name, gen.completion_tokens,
                             attempt_idx, len(attempts_list), attempt_overrides,
                         )
+                        notifier.record_retry(
+                            cluster_id=unit.cluster_id,
+                            stage=stage,
+                            condition=condition_name,
+                            attempt_idx=attempt_idx,
+                            attempts_total=len(attempts_list),
+                            completion_tokens=gen.completion_tokens,
+                        )
                         rep_gen = backend.generate_batch(
                             [pairs[unit_idx]],
                             sampling_overrides=attempt_overrides,
                             schema=schema,
+                            batch_mode=False,
                         )[0]
                         rep_parse = schema_validate.parse_and_validate(rep_gen.clean_text, schema)
                         gen = rep_gen
@@ -404,8 +447,24 @@ def real_run(
 
                 if not parse_result.schema_valid:
                     save_failures.append({"doc_id": unit.cluster_id, "stage": stage, "condition": condition_name})
+                    notifier.record_error(
+                        cluster_id=unit.cluster_id,
+                        stage=stage,
+                        condition=condition_name,
+                        parse_error=parse_result.parse_error,
+                        schema_errors=parse_result.schema_errors,
+                        semantic_errors=[],
+                    )
 
                 previous_outputs[unit.cluster_id] = parse_result.parsed
+
+                allowed_source_ids = {f"S{i:02d}" for i in range(1, len(unit.sample_sentences) + 1)}
+                semantic_result = semantic_validate.validate_stage_output(
+                    stage=stage,
+                    parsed=parse_result.parsed,
+                    allowed_source_ids=allowed_source_ids,
+                    known_label_codes=known_label_codes,
+                )
 
                 raw_path = raw_dir / unit.cluster_id / stage
                 raw_path.mkdir(parents=True, exist_ok=True)
@@ -426,12 +485,24 @@ def real_run(
                 )
 
                 final_labels = _extract_stage_summary(stage, parse_result.parsed, known_label_codes)
+                final_labels.update(
+                    {
+                        "semantic_valid": semantic_result.valid,
+                        "semantic_error_count": semantic_result.counters.get("semantic_error_count"),
+                        "semantic_error_codes": json.dumps(semantic_result.error_codes, ensure_ascii=False),
+                        "n_taxonomy_ok_items": semantic_result.counters.get("n_taxonomy_ok_items"),
+                        "n_taxonomy_total_items": semantic_result.counters.get("n_taxonomy_total_items"),
+                        "n_empty_label_code_items": semantic_result.counters.get("n_empty_label_code_items"),
+                        "n_unknown_label_code_items": semantic_result.counters.get("n_unknown_label_code_items"),
+                    }
+                )
                 flat_row = {
                     "doc_id": unit.cluster_id,
                     "n_docs": unit.n_docs,
                     "stage": stage,
                     "condition": condition_name,
                     "schema_valid": parse_result.schema_valid,
+                    "semantic_valid": semantic_result.valid,
                     "parse_retry": parse_retry_flag,
                     "repetition_retry_attempted": repetition_retry_attempted,
                     "repetition_retry_succeeded": repetition_retry_succeeded,
@@ -447,10 +518,27 @@ def real_run(
                     "raw_text": gen.raw_text,
                     "parsed": parse_result.parsed,
                     "parse_error": parse_result.parse_error,
-                    "extra": json.dumps(parse_result.schema_errors, ensure_ascii=False),
+                    "extra": json.dumps(
+                        {
+                            "schema_errors": parse_result.schema_errors,
+                            "semantic_errors": semantic_result.errors,
+                        },
+                        ensure_ascii=False,
+                    ),
                     **final_labels,
                 }
                 rows.append(flat_row)
+                if stage == "persona_03":
+                    notifier.record_cluster_result(unit.cluster_id, condition_name, flat_row)
+                if semantic_result.errors:
+                    notifier.record_error(
+                        cluster_id=unit.cluster_id,
+                        stage=stage,
+                        condition=condition_name,
+                        parse_error=parse_result.parse_error,
+                        schema_errors=parse_result.schema_errors,
+                        semantic_errors=semantic_result.errors,
+                    )
 
                 parsed_path = parsed_dir / unit.cluster_id / stage
                 parsed_path.mkdir(parents=True, exist_ok=True)
@@ -460,6 +548,9 @@ def real_run(
                             "parsed": parse_result.parsed,
                             "schema_valid": parse_result.schema_valid,
                             "schema_errors": parse_result.schema_errors,
+                            "semantic_valid": semantic_result.valid,
+                            "semantic_error_codes": semantic_result.error_codes,
+                            "semantic_errors": semantic_result.errors,
                             "flat_row": flat_row,
                         },
                         ensure_ascii=False,
@@ -498,6 +589,7 @@ def real_run(
                     n_docs=unit.n_docs,
                     freq_keywords=unit.freq_keywords,
                     distinctive_keywords=unit.distinctive_keywords,
+                    sample_doc_ids=unit.sample_doc_ids,
                     sample_sentences=unit.sample_sentences,
                     previous_output=None,
                     legal_context=legal_context,
@@ -548,6 +640,13 @@ def real_run(
         doc_count=unit_count,
         manifest=manifest,
         unit_label=UNIT_LABEL,
+    )
+    notifier.record_run_complete(
+        doc_count=unit_count,
+        failure_count=len(save_failures),
+        started_at=started_at,
+        finished_at=finished_at,
+        report_path=str(report_path),
     )
     logger.info("리포트 생성 완료: %s", report_path)
     return report_path
