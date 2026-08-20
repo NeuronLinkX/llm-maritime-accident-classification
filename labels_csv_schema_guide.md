@@ -20,7 +20,13 @@
 | `stage`                | 문자열               | 체인 단계 —`persona_01`(사실·패턴 구조화) / `persona_02`(원인 후보 검증) / `persona_03`(레이블 확정).                                                                                        |
 | `condition`            | 문자열               | `identity_on`(정체성 문구 포함) / `identity_off`(정체성 문구 제거, 나머지는 완전히 동일).                                                                                                        |
 | `schema_valid`         | 불리언               | 모델 출력이 JSON으로 파싱되고 요구 스키마(필수 필드·enum 등)를 만족했는지.`False`면 그 행의 레이블·수치 컬럼은 전부 비어있다.                                                                    |
+| `semantic_valid`       | 불리언               | 스키마(형식) 통과와 별개로, 인용한 source_id가 실제 대표문장 범위 안에 있는지·label_code가 통제어휘 안에 있는지 등 "내용"까지 검증했는지. `schema_valid=True`여도 `semantic_valid=False`일 수 있다. |
 | `parse_retry`          | 정수(0/1)            | 파싱 실패 시 재시도했는지 여부. 기본 설정은 재시도 없음(0) — greedy 디코딩에서는 같은 프롬프트를 다시 넣어도 같은 결과가 나오므로, 재시도하려면 프롬프트 자체를 바꿔야 하고 그 경우만 1로 표시된다. |
+| `repetition_retry_attempted` | 정수(0/1)      | 반복루프(공백/토큰 반복으로 max_new_tokens 소진) 의심 조건에 걸려 국소 재시도를 시도했는지. |
+| `repetition_retry_succeeded` | 정수(0/1)      | 그 재시도가 성공(스키마 통과)했는지. `attempted=1`인데 이게 0이면 4단계 사다리를 다 쓰고도 실패했다는 뜻 — 해당 행의 신뢰도가 가장 낮다. |
+| `repetition_retry_attempts_used` | 정수        | 몇 번째 시도에서 멈췄는지(1~4). |
+| `repetition_retry_overrides` | 문자열(JSON) 또는 빈값 | 마지막으로 적용한 재시도 파라미터(`frequency_penalty`, `repetition_penalty`, 3단계부터는 `temperature`+고정 `seed`). `attempted=0`이면 빈값. |
+| `generation_suspect_reason` | 문자열 또는 빈값 | 공백 20자+ 연속(100자 이상) 또는 한자 5자 이상 섞이면 그 사유를 기록(예: `whitespace_run=8285`). 반복루프 재시도 트리거는 안 걸었지만(생성엔 영향 없음) 통계에서 이 값이 있는 행은 제외해야 함 — `metrics.py::ablation_comparison`이 자동으로 제외하고 `n_paired_docs_clean`/`n_paired_docs_excluded_suspect`에 개수를 남긴다.                                                                                                                         |
 | `think_block_stripped` | 불리언               | 모델이`<think>...</think>` 형태의 내부 추론 블록을 출력해서 제거했는지. Qwen3는 기본적으로 이걸 낼 수 있어 발생률 자체를 지표로 남긴다.                                                            |
 | `prompt_tokens`        | 정수                 | 이 호출에 실제로 들어간 입력 토큰 수.                                                                                                                                                                |
 | `completion_tokens`    | 정수                 | 모델이 실제로 생성한 출력 토큰 수.`max_new_tokens`(현재 4096)와 정확히 같으면 잘렸다는 뜻이니 의심해볼 것.                                                                                         |
@@ -61,7 +67,11 @@
 
 | 컬럼                      | 타입                   | 의미                                                                                                                                                                                                    |
 | ------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `accident_type`         | 문자열                 | 이 군집의 대표 사고 유형 (모델이 채우지 않으면 비어있을 수 있음. 알려진 한계).                                                                                                                         |
+| `accident_type`         | 문자열                 | 이 군집의 대표 사고 유형 (persona_03 출력의 `incident_labels.incident_type`에서 옴). 2026-08-14 이전에는 `incident_labels` 스키마가 비어있고(`{"type":"object"}`) 코드도 잘못된 키(`accident_type`)를 찾고 있어 항상 비어있었다 — 스키마에 하위 필드를 명시하고 키 이름을 맞춰서 고침. 이 수정 이전에 생성된 데이터는 여전히 비어있다.                                                                                                                         |
+| `semantic_error_count`  | 정수 또는 빈값          | `semantic_valid` 검증에서 걸린 오류 개수.                                                                                                                                                              |
+| `semantic_error_codes`  | 문자열(JSON 리스트)    | 걸린 오류 코드 목록 (예: 존재하지 않는 source_id 인용, 통제어휘 밖 label_code 등).                                                                                                                     |
+| `n_taxonomy_ok_items` / `n_taxonomy_total_items` | 정수 | cause_labels 중 통제어휘를 지킨 항목 수 / 전체 항목 수.                                                                                                                                     |
+| `n_empty_label_code_items` / `n_unknown_label_code_items` | 정수 | label_code가 빈 문자열이거나("") 통제어휘에 없는 값("[UNMATCHED]", "_UNKNOWN_" 등)인 항목 수 — 0보다 크면 그 행은 신뢰도 낮음.                                                                        |
 | `root_cause_primary`    | 문자열                 | **최종 주원인** : KMST 공식 분류체계(운항과실/취급 불량 및 결함/기타 세부항목) 중 기여도 점수가 가장 높은 것 하나.                                                                               |
 | `root_cause_secondary`  | 문자열(JSON 리스트)    | 주원인 외 나머지 원인 후보 목록, 기여도 점수 내림차순.                                                                                                                                                  |
 | `n_causes`              | 정수                   | 이 군집에 대해 모델이 매긴 원인 개수(주원인+부원인 합계).                                                                                                                                               |

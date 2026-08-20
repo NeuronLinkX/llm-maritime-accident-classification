@@ -61,7 +61,26 @@
     "actors": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "actor_id",
+          "role"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "vessel_id": {
+            "type": "string"
+          }
+        }
       }
     },
     "vessels": {
@@ -77,16 +96,47 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["event_id", "event", "time_precision"],
+        "additionalProperties": false,
+        "required": [
+          "event_id",
+          "event",
+          "time_precision"
+        ],
         "properties": {
-          "event_id": { "type": "string" },
-          "time": { "type": "string" },
-          "time_precision": { "enum": ["EXACT", "APPROXIMATE", "UNKNOWN"] },
-          "actor_ids": { "type": "array", "items": { "type": "string" } },
-          "event": { "type": "string" },
-          "fact_status": { "$ref": "#/$defs/fact_status" },
-          "evidence_ids": { "type": "array", "items": { "type": "string" } },
-          "source_location": { "type": "string" }
+          "event_id": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          },
+          "time_precision": {
+            "enum": [
+              "EXACT",
+              "APPROXIMATE",
+              "UNKNOWN"
+            ]
+          },
+          "actor_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "event": {
+            "type": "string"
+          },
+          "fact_status": {
+            "$ref": "#/$defs/fact_status"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_location": {
+            "type": "string"
+          }
         }
       }
     },
@@ -94,16 +144,47 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["fact_id", "fact_text", "fact_status", "confidence"],
+        "required": [
+          "fact_id",
+          "fact_text",
+          "fact_status",
+          "confidence"
+        ],
         "properties": {
-          "fact_id": { "type": "string" },
-          "fact_text": { "type": "string" },
-          "fact_status": { "$ref": "#/$defs/fact_status" },
-          "actor_ids": { "type": "array", "items": { "type": "string" } },
-          "evidence_ids": { "type": "array", "items": { "type": "string" } },
-          "source_excerpt": { "type": "string" },
-          "source_location": { "type": "string" },
-          "confidence": { "enum": ["HIGH", "MEDIUM", "LOW"] }
+          "fact_id": {
+            "type": "string"
+          },
+          "fact_text": {
+            "type": "string"
+          },
+          "fact_status": {
+            "$ref": "#/$defs/fact_status"
+          },
+          "actor_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_excerpt": {
+            "type": "string"
+          },
+          "source_location": {
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ]
+          }
         }
       }
     },
@@ -111,15 +192,45 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["evidence_id", "evidence_type", "description", "reliability"],
+        "required": [
+          "evidence_id",
+          "evidence_type",
+          "description",
+          "reliability"
+        ],
         "properties": {
-          "evidence_id": { "type": "string" },
-          "evidence_type": { "$ref": "#/$defs/evidence_type" },
-          "description": { "type": "string" },
-          "supports_fact_ids": { "type": "array", "items": { "type": "string" } },
-          "contradicts_fact_ids": { "type": "array", "items": { "type": "string" } },
-          "source_location": { "type": "string" },
-          "reliability": { "enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"] }
+          "evidence_id": {
+            "type": "string"
+          },
+          "evidence_type": {
+            "$ref": "#/$defs/evidence_type"
+          },
+          "description": {
+            "type": "string"
+          },
+          "supports_fact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contradicts_fact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_location": {
+            "type": "string"
+          },
+          "reliability": {
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "UNKNOWN"
+            ]
+          }
         }
       }
     },

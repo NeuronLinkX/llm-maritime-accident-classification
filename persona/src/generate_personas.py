@@ -540,6 +540,33 @@ def render_legal_context(chunks: Sequence[Chunk], max_chars: int) -> str:
 
 
 def schema_p01() -> dict[str, Any]:
+    # 2026-08-14: persona_model/persona_01_output_schema.json과 동기화 — 원래 이 함수가
+    # facts[]/evidence[]/timeline[]/actors[]를 전부 빈 {"type":"object"}로만 정의해서
+    # (1) fact_status/evidence_type이 마스터 프롬프트 10.6/10.7절 통제어휘를 안 지키고,
+    # (2) actors/timeline이 항상 빈 배열로만 나와도 스키마상 아무 문제가 없었다.
+    # facts/evidence/timeline 필드명은 persona/src/prompt.txt 10.8절, actors는 별도
+    # 명세가 없어 이 프로젝트에서 새로 설계했다(actor_id/role/description/vessel_id).
+    fact_status_enum = {
+        "enum": [
+            "ESTABLISHED_BY_DECISION",
+            "OBJECTIVE_RECORD",
+            "PARTY_STATEMENT",
+            "WITNESS_STATEMENT",
+            "EXPERT_OPINION",
+            "MODEL_INFERENCE",
+            "DISPUTED",
+            "UNVERIFIED",
+        ]
+    }
+    evidence_type_enum = {
+        "enum": [
+            "AIS", "VDR", "RADAR", "ECDIS", "GPS", "CCTV",
+            "NAVIGATION_LOG", "ENGINE_LOG", "WEATHER_RECORD",
+            "RADIO_COMMUNICATION", "INSPECTION_RECORD", "PHOTOGRAPH",
+            "PHYSICAL_EVIDENCE", "PARTY_STATEMENT", "WITNESS_STATEMENT",
+            "EXPERT_REPORT", "DECISION_FINDING", "OTHER",
+        ]
+    }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://example.local/kmst/persona-01.schema.json",
@@ -561,12 +588,73 @@ def schema_p01() -> dict[str, Any]:
         ],
         "properties": {
             "case_metadata": {"type": "object"},
-            "actors": {"type": "array", "items": {"type": "object"}},
+            "actors": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["actor_id", "role"],
+                    "properties": {
+                        "actor_id": {"type": "string"},
+                        "role": {"type": "string"},
+                        "description": {"type": "string"},
+                        "vessel_id": {"type": "string"},
+                    },
+                },
+            },
             "vessels": {"type": "array", "items": {"type": "object"}},
             "environment": {"type": "object"},
-            "timeline": {"type": "array", "items": {"type": "object"}},
-            "facts": {"type": "array", "items": {"type": "object"}},
-            "evidence": {"type": "array", "items": {"type": "object"}},
+            "timeline": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["event_id", "event", "time_precision"],
+                    "properties": {
+                        "event_id": {"type": "string"},
+                        "time": {"type": "string"},
+                        "time_precision": {"enum": ["EXACT", "APPROXIMATE", "UNKNOWN"]},
+                        "actor_ids": {"type": "array", "items": {"type": "string"}},
+                        "event": {"type": "string"},
+                        "fact_status": fact_status_enum,
+                        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+                        "source_location": {"type": "string"},
+                    },
+                },
+            },
+            "facts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["fact_id", "fact_text", "fact_status", "confidence"],
+                    "properties": {
+                        "fact_id": {"type": "string"},
+                        "fact_text": {"type": "string"},
+                        "fact_status": fact_status_enum,
+                        "actor_ids": {"type": "array", "items": {"type": "string"}},
+                        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+                        "source_excerpt": {"type": "string"},
+                        "source_location": {"type": "string"},
+                        "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"]},
+                    },
+                },
+            },
+            "evidence": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["evidence_id", "evidence_type", "description", "reliability"],
+                    "properties": {
+                        "evidence_id": {"type": "string"},
+                        "evidence_type": evidence_type_enum,
+                        "description": {"type": "string"},
+                        "supports_fact_ids": {"type": "array", "items": {"type": "string"}},
+                        "contradicts_fact_ids": {"type": "array", "items": {"type": "string"}},
+                        "source_location": {"type": "string"},
+                        "reliability": {"enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"]},
+                    },
+                },
+            },
             "evidence_conflicts": {"type": "array", "items": {"type": "object"}},
             "missing_information": {"type": "array", "items": {"type": "string"}},
             "privacy_actions": {"type": "array", "items": {"type": "string"}},
@@ -657,7 +745,30 @@ def schema_p03() -> dict[str, Any]:
                     },
                 },
             },
-            "incident_labels": {"type": "object"},
+            "incident_labels": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "incident_type",
+                    "severity",
+                    "fatality_present",
+                    "injury_present",
+                    "pollution_present",
+                    "primary_cause_category",
+                    "secondary_cause_categories",
+                    "data_completeness",
+                ],
+                "properties": {
+                    "incident_type": {"type": "string"},
+                    "severity": {"type": "string"},
+                    "fatality_present": {"type": "boolean"},
+                    "injury_present": {"type": "boolean"},
+                    "pollution_present": {"type": "boolean"},
+                    "primary_cause_category": {"type": "string"},
+                    "secondary_cause_categories": {"type": "array", "items": {"type": "string"}},
+                    "data_completeness": {"type": "string"},
+                },
+            },
             "quality_assurance": {"type": "object"},
         },
     }

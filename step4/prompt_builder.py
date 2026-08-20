@@ -119,7 +119,6 @@ _CLUSTER_MODE_NOTE = {
     ),
 }
 
-
 def cluster_mode_preamble(persona_id: str) -> str:
     note = _CLUSTER_MODE_NOTE.get(persona_id, "")
     return (
@@ -131,6 +130,11 @@ def cluster_mode_preamble(persona_id: str) -> str:
         "actor_ids/evidence_ids/fact_ids 같은 ID 배열은 각 항목당 최대 5개까지만 실제로 "
         "존재하는 근거만 인용하고, 그 이상 순차적으로 번호를 늘려가며 나열하지 마십시오 — "
         "이 군집의 대표 문장은 최대 15개뿐이므로 ID가 두 자릿수를 넘어가면 잘못된 것입니다. "
+        "모든 텍스트 필드(fact_text, description, cause_name, event 등 서술형 문자열)는 "
+        "예외 없이 한국어로만 작성하십시오. 중국어·영어 등 다른 언어 단어나 문장을 섞어서 "
+        "쓰지 마십시오 — 적합한 한국어 표현이 바로 떠오르지 않더라도 다른 언어로 대체하지 "
+        "말고 한국어로 풀어서 쓰십시오. enum 값(HIGH/MEDIUM/READY_FOR_PERSONA_2 등 "
+        "스키마가 지정한 고정 값)에는 이 규칙이 적용되지 않습니다. "
         + note
     )
 

@@ -127,16 +127,42 @@ def ablation_comparison(df: pd.DataFrame) -> dict:
         stage_result["schema_validity_rate_off"] = float(off["schema_valid"].mean())
 
         # 출력 길이 차이: Wilcoxon + paired Cliff's delta
-        on_tok = on["completion_tokens"].to_numpy(dtype=float)
-        off_tok = off["completion_tokens"].to_numpy(dtype=float)
+        # 2026-08-14: on/off 어느 한쪽이라도 생성 오염 의심(generation_suspect_reason)이면
+        # 그 군집 쌍은 토큰 효율성 비교에서 제외한다 — 반복루프/공백패딩으로 부풀려진
+        # completion_tokens가 "페르소나가 더 효율적"이라는 신호를 가리거나 뒤집는 것을
+        # 실측으로 확인했다(오염 포함 시 on/off 비율 역전). n_paired_docs와는 별개로
+        # n_paired_docs_clean/n_excluded_suspect를 남겨 필터링 전후를 리포트에서 추적한다.
+        if "generation_suspect_reason" in stage_df.columns:
+            on_clean_mask = on["generation_suspect_reason"].isna()
+            off_clean_mask = off["generation_suspect_reason"].isna()
+            clean_mask = (on_clean_mask & off_clean_mask).to_numpy()
+        else:
+            clean_mask = np.ones(len(common), dtype=bool)
+        stage_result["n_paired_docs_clean"] = int(clean_mask.sum())
+        stage_result["n_paired_docs_excluded_suspect"] = int(len(common) - clean_mask.sum())
+
+        on_tok = on["completion_tokens"].to_numpy(dtype=float)[clean_mask]
+        off_tok = off["completion_tokens"].to_numpy(dtype=float)[clean_mask]
         try:
             wstat, wp = stats.wilcoxon(on_tok, off_tok)
         except ValueError:
             wstat, wp = float("nan"), float("nan")
         stage_result["completion_tokens_wilcoxon"] = {"statistic": float(wstat), "p_value": float(wp)}
+        stage_result["completion_tokens_wilcoxon_note"] = (
+            "n<10에서는 p-value 해상도가 낮아 유의성 판단에 참고용으로만 쓸 것"
+        )
         stage_result["completion_tokens_cliffs_delta_paired"] = _paired_cliffs_delta(on_tok, off_tok)
         stage_result["completion_tokens_mean_on"] = float(np.mean(on_tok)) if len(on_tok) else float("nan")
         stage_result["completion_tokens_mean_off"] = float(np.mean(off_tok)) if len(off_tok) else float("nan")
+        # 참고용(오염 포함 전체) — 필터링 효과를 리포트에서 바로 대조할 수 있도록 같이 남긴다.
+        on_tok_all = on["completion_tokens"].to_numpy(dtype=float)
+        off_tok_all = off["completion_tokens"].to_numpy(dtype=float)
+        stage_result["completion_tokens_mean_on_all_incl_suspect"] = (
+            float(np.mean(on_tok_all)) if len(on_tok_all) else float("nan")
+        )
+        stage_result["completion_tokens_mean_off_all_incl_suspect"] = (
+            float(np.mean(off_tok_all)) if len(off_tok_all) else float("nan")
+        )
 
         if stage == "persona_03":
             on_labels = on["root_cause_primary"].fillna("NULL").tolist()

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,103 @@ from step4 import taxonomy as taxonomy_mod
 from step4.config import Config
 
 UNIT_LABEL = "군집"
+
+# 2026-08-14: 반복루프 재시도 트리거(schema 실패 + 토큰 상한 근접)를 아슬아슬하게
+# 피해가는 오염 사례가 실측됐다(cluster_2/persona_01/identity_on: completion_tokens
+# 3812/4096=93%로 재시도 기준 미달, 그런데 그 안에 37171자 연속 공백). 생성 로직 자체는
+# 건드리지 않고(재시도로 인한 새 오염 유발 위험을 피하기 위해) 저장 직전에 "의심스러움"만
+# 표시해 flat/labels.parquet에 남긴다 — 통계 낼 때 이 컬럼으로 걸러 쓰라는 용도다.
+_SUSPECT_WHITESPACE_RUN_THRESHOLD = 100
+_SUSPECT_WHITESPACE_RE = re.compile(r"\s{20,}")
+_SUSPECT_CJK_RE = re.compile(r"[一-鿿]")
+_SUSPECT_CJK_THRESHOLD = 5
+
+# 2026-08-20: cluster_0/persona_01의 반복루프 1차 재시도가 스키마는 통과했지만
+# (1) fact_text가 한국어 대신 영어로("In this representative event pattern of the
+# ship m...") 새고 (2) fact_id/evidence_id가 빈 문자열이라 persona_02가 그 ID를
+# 인용할 수조차 없어 support_level=HIGH인데 fact_ids/evidence_ids가 빈 채로
+# 하류까지 그대로 전파된 사례가 실측됐다. schema_valid만 보던 재시도 "성공" 판정에
+# 언어(한국어 재결서 분석인데 영어로 새는지)와 ID 완전성(참조용 *_id가 채워졌는지)
+# 검증을 추가한다 — 짧은 enum 값("HIGH", "AIS" 등)을 오탐하지 않도록 일정 길이 이상의
+# 문자열에만 언어 비율 검사를 적용한다.
+_LATIN_TEXT_MIN_LEN = 15
+_LATIN_RATIO_THRESHOLD = 0.6
+_LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
+_NON_SPACE_RE = re.compile(r"\S")
+_ID_KEY_RE = re.compile(r"_id$")
+
+
+def _walk_strings_with_key(obj, parent_key: str | None = None):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _walk_strings_with_key(v, k)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_strings_with_key(v, parent_key)
+    elif isinstance(obj, str):
+        yield parent_key, obj
+
+
+def _language_drift_detail(parsed: dict | None) -> str | None:
+    if not parsed:
+        return None
+    for key, text in _walk_strings_with_key(parsed):
+        # ESTABLISHED_BY_DECISION, PARTY_STATEMENT 같은 SCREAMING_SNAKE_CASE enum 값은
+        # 공백이 없는 단일 토큰이라 여기서 제외한다 — 실제 언어 이탈(영어 문장)은 항상
+        # 공백 섞인 여러 단어로 나온다("In this representative event pattern..."). 공백이
+        # 없는 문자열은 enum/코드값일 가능성이 높아 언어 검사 대상에서 뺀다.
+        if " " not in text.strip():
+            continue
+        non_space = _NON_SPACE_RE.findall(text)
+        if len(non_space) < _LATIN_TEXT_MIN_LEN:
+            continue
+        latin = len(_LATIN_LETTER_RE.findall(text))
+        if latin / len(non_space) >= _LATIN_RATIO_THRESHOLD:
+            return f"{key}='{text[:40]}...'"
+    return None
+
+
+def _empty_id_field_detail(parsed: dict | None) -> str | None:
+    if not parsed:
+        return None
+    if isinstance(parsed, dict):
+        has_other_content = any(
+            (isinstance(v, str) and v.strip()) or (isinstance(v, (list, dict)) and v)
+            for k, v in parsed.items()
+            if not _ID_KEY_RE.search(k)
+        )
+        for k, v in parsed.items():
+            if _ID_KEY_RE.search(k) and isinstance(v, str) and not v.strip() and has_other_content:
+                return f"{k}=''"
+        for v in parsed.values():
+            found = _empty_id_field_detail(v)
+            if found:
+                return found
+    elif isinstance(parsed, list):
+        for item in parsed:
+            found = _empty_id_field_detail(item)
+            if found:
+                return found
+    return None
+
+
+def _generation_suspect_reason(raw_text: str, parsed: dict | None = None) -> str | None:
+    reasons = []
+    if raw_text:
+        ws_runs = _SUSPECT_WHITESPACE_RE.findall(raw_text)
+        max_ws = max((len(r) for r in ws_runs), default=0)
+        cjk_count = len(_SUSPECT_CJK_RE.findall(raw_text))
+        if max_ws >= _SUSPECT_WHITESPACE_RUN_THRESHOLD:
+            reasons.append(f"whitespace_run={max_ws}")
+        if cjk_count >= _SUSPECT_CJK_THRESHOLD:
+            reasons.append(f"cjk_chars={cjk_count}")
+    lang_detail = _language_drift_detail(parsed)
+    if lang_detail:
+        reasons.append(f"non_korean_text[{lang_detail}]")
+    id_detail = _empty_id_field_detail(parsed)
+    if id_detail:
+        reasons.append(f"empty_id[{id_detail}]")
+    return ";".join(reasons) if reasons else None
 
 
 def _prepare(config: Config, logger: logging.Logger):
@@ -191,7 +289,11 @@ def _extract_persona_03_summary(parsed: dict, known_label_codes: set[str] | None
     root_cause_primary = cause_labels_sorted[0].get("label_code") if cause_labels_sorted else None
     root_cause_secondary = [c.get("label_code") for c in cause_labels_sorted[1:]] if len(cause_labels_sorted) > 1 else []
     incident_labels = parsed.get("incident_labels") or {}
-    accident_type = incident_labels.get("accident_type") if isinstance(incident_labels, dict) else None
+    # 마스터 프롬프트(persona_pipeline_master_prompt.md 12.8)의 실제 필드명은 "incident_type"인데
+    # 여기서 계속 "accident_type" 키로 찾고 있었다 — incident_labels 스키마도 원래 {"type":"object"}로
+    # 비어있어서 이름을 맞춰도 채워질 수 없었다. 두 가지를 함께 고쳤다(persona_03_output_schema.json도
+    # incident_labels 하위 필드를 명시하도록 수정).
+    accident_type = incident_labels.get("incident_type") if isinstance(incident_labels, dict) else None
     all_codes = [c.get("label_code") for c in cause_labels]
     taxonomy_valid = (
         all(code in known_label_codes for code in all_codes) if (known_label_codes and all_codes) else None
@@ -402,7 +504,7 @@ def real_run(
                     not parse_result.schema_valid
                     and parse_result.parse_error == "JSON_DECODE_FAILED"
                     and gen.completion_tokens >= repetition_retry_token_threshold
-                )
+                ) or _generation_suspect_reason(gen.raw_text, parse_result.parsed) is not None
                 if repetition_retry_enabled and is_runaway_repetition and attempts_list:
                     repetition_retry_attempted = 1
                     for attempt_idx, attempt_overrides in enumerate(attempts_list, start=1):
@@ -431,7 +533,9 @@ def real_run(
                         rep_parse = schema_validate.parse_and_validate(rep_gen.clean_text, schema)
                         gen = rep_gen
                         parse_result = rep_parse
-                        if rep_parse.schema_valid:
+                        if rep_parse.schema_valid and _generation_suspect_reason(
+                            rep_gen.raw_text, rep_parse.parsed
+                        ) is None:
                             repetition_retry_succeeded = 1
                             break
                     repetition_retry_cases.append(
@@ -511,6 +615,7 @@ def real_run(
                     if repetition_retry_attempted
                     else None,
                     "think_block_stripped": gen.think_block_stripped,
+                    "generation_suspect_reason": _generation_suspect_reason(gen.raw_text, parse_result.parsed),
                     "prompt_tokens": gen.prompt_tokens,
                     "completion_tokens": gen.completion_tokens,
                     "latency_sec": gen.latency_sec,

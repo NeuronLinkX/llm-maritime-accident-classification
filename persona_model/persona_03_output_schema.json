@@ -91,7 +91,47 @@
       }
     },
     "incident_labels": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "incident_type",
+        "severity",
+        "fatality_present",
+        "injury_present",
+        "pollution_present",
+        "primary_cause_category",
+        "secondary_cause_categories",
+        "data_completeness"
+      ],
+      "properties": {
+        "incident_type": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "fatality_present": {
+          "type": "boolean"
+        },
+        "injury_present": {
+          "type": "boolean"
+        },
+        "pollution_present": {
+          "type": "boolean"
+        },
+        "primary_cause_category": {
+          "type": "string"
+        },
+        "secondary_cause_categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_completeness": {
+          "type": "string"
+        }
+      }
     },
     "quality_assurance": {
       "type": "object"
